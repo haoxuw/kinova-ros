@@ -1,0 +1,12 @@
+int64 x
+int64 y
+---
+bool executed
+geometry_msgs/Pose pose
+float64 img_x
+float64 img_y
+float64 img_depth
+float64 img_width
+float64 img_theta
+int32 status_code
+bool result
