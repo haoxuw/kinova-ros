@@ -16,6 +16,10 @@
 
 #include "script_reader.h"
 
+#include<stdio.h>
+#include<cstdlib>
+#include<dirent.h>
+
 const double FINGER_MAX = 6400;
 
 using namespace kinova;
@@ -237,10 +241,11 @@ moveit::planning_interface::MoveItErrorCode RobustGrasp::move_arm(geometry_msgs:
       auto plan_rc = group.plan(plan);
       ROS_INFO("move_arm -- planned");
       if(plan_rc == moveit::planning_interface::MoveItErrorCode::SUCCESS) {
+	ros::WallDuration(0.2).sleep();
         ROS_INFO("move_arm -- executing move now");
         auto exec_rc = group.execute(plan);
         if(exec_rc == moveit::planning_interface::MoveItErrorCode::SUCCESS || exec_rc.val == 0 || exec_rc == moveit::planning_interface::MoveItErrorCode::CONTROL_FAILED /* return code 0 seems to be a bug in moveit, and CONTROL_FAILED==-4 is ok to ignore */) {
-          ROS_INFO("move_arm -- Successful, rc = %d.",(int)exec_rc.val);
+          ROS_INFO("move_arm -- Successful.");
           return moveit::planning_interface::MoveItErrorCode::SUCCESS;
         }
         else {
@@ -356,20 +361,25 @@ bool RobustGrasp::move_to_homepose() {
 
 */
 moveit::planning_interface::MoveItErrorCode RobustGrasp::move_gripper(std::string target, double finger_turn) {
-  moveit::planning_interface::MoveItErrorCode rc = 0;
+  moveit::planning_interface::MoveItErrorCode ret = 0;
   if(robot_connected_ == false) {
     if (!target.compare("open")) {
       ROS_INFO("move_gripper -- opening gripper");
-      rc.val |= gripper_group_->setNamedTarget("Open");
-      rc.val |= gripper_group_->move().val;
+      gripper_group_->setNamedTarget("Open");
+      moveit::planning_interface::MoveItErrorCode rc = gripper_group_->move();
+      ret.val |= rc.val;
     }
     else if (!target.compare("close")) {
       ROS_INFO("move_gripper -- closing gripper");
-      rc.val |= gripper_group_->setNamedTarget("Close");
-      rc.val |= gripper_group_->move().val;
+      gripper_group_->setNamedTarget("Close");
+      moveit::planning_interface::MoveItErrorCode rc = gripper_group_->move();
+      ret.val |= rc.val;
     }
-    ROS_INFO("move_gripper -- gripper action completed with rc=%d.",(int)rc.val);
-    return rc;
+    if(ret.val == moveit::planning_interface::MoveItErrorCode::SUCCESS)
+      ROS_INFO("move_arm -- Successful.");
+    else
+      ROS_INFO("move_arm -- Failed.");
+    return ret;
   }
 
   if (!target.compare("open"))
@@ -395,13 +405,13 @@ moveit::planning_interface::MoveItErrorCode RobustGrasp::move_gripper(std::strin
   if (finger_client_->waitForResult(ros::Duration(5.0)))
     {
       finger_client_->getResult();
-      return true;
+      return moveit::planning_interface::MoveItErrorCode::SUCCESS;
     }
   else
     {
       finger_client_->cancelAllGoals();
       ROS_WARN_STREAM("The gripper action timed-out");
-      return false;
+      return moveit::planning_interface::MoveItErrorCode::FAILURE;
     }
 }
 
@@ -525,18 +535,61 @@ bool RobustGrasp::Image_Buffer::write_color_and_depth_to(std::string filename) {
   return false;
 }
 
-int RobustGrasp::run_script() {
+int RobustGrasp::run_script(string filename) {
   Sreader sreader;
-  moveit::planning_interface::MoveItErrorCode rc;
-  rc.val |= move_gripper("close").val;
+  bool ret = true;
+  ret &= move_gripper("close").val == moveit::planning_interface::MoveItErrorCode::SUCCESS;
 
   //auto pose = generate_pose(HOME_POSE);
-  vector<geometry_msgs::PoseStamped> script = sreader.parse("");
+  vector<geometry_msgs::PoseStamped> script = sreader.parse(filename);
+  
+  ROS_INFO("Executing %s of length %d", filename.c_str(), script.size());
+
   for (auto &pose : script) {
-    rc.val |= move_arm(pose).val;
+    ret &= move_arm(pose).val == moveit::planning_interface::MoveItErrorCode::SUCCESS;
+    if (!ret)
+      break;
     ros::WallDuration(0.2).sleep();
   }
-  return rc != moveit::planning_interface::MoveItErrorCode::SUCCESS;
+  if(ret)
+    ROS_INFO("Run script success.");
+  else
+    ROS_INFO("Run script failed.");
+
+  return ret;
+}
+
+int RobustGrasp::run_scripts(string path) {
+  DIR *pDIR;
+  struct dirent *entry;
+  int count = 0;
+  int successed = 0;
+  if( pDIR=opendir(path.c_str()) ){
+    string command = "";
+    command = "mkdir -p " + path + "/successed/";
+    system (command.c_str());
+    command = "mkdir -p " + path + "/failed/";
+    system (command.c_str());
+    while(entry = readdir(pDIR)){
+      if( strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0 ) {
+	string full_name = path + "/" + entry->d_name;
+	bool pass = run_script(full_name);
+	if (pass) {
+	  command = "cp " + full_name + " " + path + "/successed/";
+	  system (command.c_str());
+	}
+	else {
+	  command = "cp " + full_name + " " + path + "/failed/";
+	  system (command.c_str());
+	}
+	count ++;
+	successed ++;
+      }
+    }
+    ROS_INFO("run_scripts completed with %d success out of %d scripts", successed, count);
+    closedir(pDIR);
+  }
+  return 0;
 }
 
 void RobustGrasp::listen_to_console() {
@@ -546,6 +599,12 @@ void RobustGrasp::listen_to_console() {
   bool visualize = false;
 
   while(true) {
+    if (true) {
+      string path = "/home/haoxuw/mcgill/kinova/src/kinova-ros/script/fake_results/";
+      run_scripts(path);
+      ros::shutdown();
+      break;
+    }
     std::cin>>command;
     if(command == "hello") {
       ROS_INFO_STREAM("world.");
@@ -554,7 +613,8 @@ void RobustGrasp::listen_to_console() {
       ros::shutdown();
     }
     else if(command == "script" || command == "s") {
-      run_script();
+      string fname;
+      run_script(fname);
     }
     else if(command == "takeover" || command == "t") {
       ROS_INFO_STREAM("Entered manual mode:");

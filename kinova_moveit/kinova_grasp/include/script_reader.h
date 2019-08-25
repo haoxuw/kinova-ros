@@ -18,12 +18,14 @@ class Sreader {
   static vector<geometry_msgs::PoseStamped> parse(string fname) {
     vector<geometry_msgs::PoseStamped> traj;
     
-    fname = "/home/haoxuw/mcgill/kinova/tracked_results/e010_res.traj";
-    fname = "/home/haoxuw/mcgill/kinova/fake_results/0.fake.traj";
     fstream fs(fname);
     string line;
     while (getline(fs, line)) {
       cout<<line<<endl;
+      if (line.empty())
+	continue;
+      if (line[0] == '#')
+	continue;
       stringstream ss(line);
       double time;
       ss >> time;

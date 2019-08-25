@@ -138,7 +138,8 @@ namespace kinova
     // fixed pitch and yaw
     geometry_msgs::PoseStamped generate_pose(double x, double y, double z, double roll, double pitch, double yaw);
 
-    int run_script();
+    int run_script(std::string fname);
+    int run_scripts(std::string path);
 
   public:
     bool robot_connected_;
