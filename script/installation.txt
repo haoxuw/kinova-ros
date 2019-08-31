@@ -1,0 +1,5 @@
+python -m pip install empy
+sudo apt-get install ros-kinetic-moveit
+sudo apt-get install ros-kinetic-ros-control ros-kinetic-ros-controllers
+sudo apt-get install ros-kinetic-gazebo-ros-control
+sudo apt-get install ros-kinetic-trac-ik-kinematics-plugin
