@@ -1,16 +1,29 @@
 mini = True
-mini = False
+#mini = False
 if mini == True:
     __OUTNAME__ = "mini"
     __AFFINE_MULTIPLIER__ = 50
     __MUTATE_MULTIPLIER__ = 10
+    __MUTATE_LENGTH__ = 10
 else:
     __OUTNAME__ = "fake"
-    __AFFINE_MULTIPLIER__ = 10
-    __MUTATE_MULTIPLIER__ = 5000
-
+    __AFFINE_MULTIPLIER__ = 50
+    __MUTATE_MULTIPLIER__ = 20
+    __MUTATE_LENGTH__ = 1000
 
 import math
+
+__RESOLUTION__ = 64
+fixed_range = [
+    [0, 32, 100], #dummy
+    [-0.7, 0.3, __RESOLUTION__],
+    [-0.8, 0, __RESOLUTION__],
+    [0.1, 0.7, __RESOLUTION__],
+    [0, 2*math.pi, __RESOLUTION__],
+    [0, 0, __RESOLUTION__],
+    [-math.pi, 2*math.pi, __RESOLUTION__],
+]
+
 
 import sys,os,json,pickle
 
@@ -27,8 +40,15 @@ def save_to_npy(data, name):
 
 def load_from_npy(name):
     print "loading to file " + name
-    data = np.load(name)
+    data = np.load(name).astype('float32')
     return data
+
+def add_time_axis(script):
+    size = script.shape[0]
+    time_series = np.arange(0,size).astype(float)/2
+    time_series = time_series.reshape(-1, 1)
+    script = np.concatenate([time_series, script] , axis = 1)
+    return script
 
 def visualize_script(script):
     duration = script[-1][0]
@@ -62,7 +82,7 @@ def visualize_script(script):
     ax.set_ylim3d(-0.7,0)
 
     ax.set_zlabel('<-down-  Z axis  -up->')
-    ax.set_zlim3d(0,0.5)
+    ax.set_zlim3d(0,0.8)
 
     m = cm.ScalarMappable(cmap=cm.winter)
     m.set_array(t*duration)
@@ -206,7 +226,7 @@ def affine_script(scri):
 
 
 def mutate_script(scri):
-    MUTATION_NUM = MAX_TIME * HZ / 10
+    MUTATION_NUM = MAX_TIME * HZ / 2
     MUTATION_ratio_MAX = 0.05
 
     dist = 0.0
@@ -214,8 +234,16 @@ def mutate_script(scri):
         ratio = np.random.uniform(-MUTATION_ratio_MAX, MUTATION_ratio_MAX)
         index = np.random.randint(scri.shape[0])
         column = np.random.randint(6) + 1
+        if column > 3:
+            if scri[index,column] > 2*math.pi or scri[index,column] < -math.pi:
+                continue
         dist += abs(ratio)
-        scri[index,column] *= ratio + 1
+        scri[index,column] += (fixed_range[column][1] - fixed_range[column][0]) * ratio
+        if column >= 1 and column <= 3:
+            if scri[index,column] < fixed_range[column][0]:
+                scri[index,column] = fixed_range[column][0]
+            if scri[index,column] > fixed_range[column][1]:
+                scri[index,column] = fixed_range[column][1]
     return dist, scri
 
 def dump_np_array(names, dists, scripts, path, output_suffix, output_traj_files = False):
@@ -239,22 +267,25 @@ def dump_np_array(names, dists, scripts, path, output_suffix, output_traj_files 
             arr_traj.append(scri)
             arr_dist.append(dist)
 
-            scri_mut = np.copy(scri)
-            for i in range(__MUTATE_MULTIPLIER__):
-                # accumulative
-                delta_dist, scri_mut = mutate_script(scri_mut)
-                dist += delta_dist
+            for j in range(__MUTATE_MULTIPLIER__):
+                scri_mut = np.copy(scri)
+                dist_mut = dist
+                for i in range(__MUTATE_LENGTH__):
+                    # accumulative
+                    delta_dist, scri_mut = mutate_script(scri_mut)
+                    dist_mut += delta_dist
+                    if output_traj_files:
+                        write_script_to_file(dist, scri_mut, output_path + "/fake_" + str(cnt) + "_mutate.traj")
+                        cnt += 1
+                    arr_traj.append(np.copy(scri_mut))
+                    arr_dist.append(dist_mut)
                 #visualize_script(scri_mut)
-                if output_traj_files:
-                    write_script_to_file(dist, scri_mut, output_path + "/fake_" + str(cnt) + "_mutate.traj")
-                    cnt += 1
-                arr_traj.append(scri)
-                arr_dist.append(dist)
-    #visualize_script(scri_mut)
     arr_traj = np.array(arr_traj)
     arr_dist = np.array(arr_dist)
+    arr_dist /= np.max(arr_dist)
     print arr_traj.shape
     print arr_dist.shape
+    #print arr_traj[-1]
     save_to_npy(arr_traj, path + "x_" + output_suffix)
     save_to_npy(arr_dist, path + "y_" + output_suffix)
     
