@@ -5,6 +5,25 @@ import sys, datetime
 import tensorflow as tf
 from tensorflow.keras.layers import *
 
+def normalize_into(x, x_range):
+    x = x * np.array([x_range[1][1] - x_range[1][0],
+                      x_range[2][1] - x_range[2][0],
+                      x_range[3][1] - x_range[3][0],
+                      x_range[4][1] - x_range[4][0],
+                      x_range[5][1] - x_range[5][0],
+                      x_range[6][1] - x_range[6][0],
+    ])
+
+    x = x + np.array([x_range[1][0],
+                      x_range[2][0],
+                      x_range[3][0],
+                      x_range[4][0],
+                      x_range[5][0],
+                      x_range[6][0],
+    ])
+
+    return x
+    
 def HW_Gen_CONV(discriminator):
     __NAME__ = 'hw_gen'
     __NAME_PREVIX__ = __NAME__ + "_"
@@ -12,18 +31,22 @@ def HW_Gen_CONV(discriminator):
     __FILTER_SIZE__ = 9
 
     __DECONV_SHAPE__ = [32, 64, 128, 256, 512, 512, 1024, 2048]
+    __DENSE_SHAPE__ = [6, 32]
 
     seed = keras.Input(shape=(3), name = __NAME_PREVIX__ + "seed")
+    x = seed
 
     [entry, exit, discriminator_model] = discriminator
     disc_input_shape = entry.input_shape[0][1:]
     print disc_input_shape
 
-    dense_shape = [6]
-    #dense_shape.append(disc_input_shape[0] * disc_input_shape[1])
-    x = seed
+    dense_shape = __DENSE_SHAPE__
+    activation = 'relu'
+    activation = 'linear'
+    activation = 'sigmoid'
+
     for cnt,filters in enumerate(dense_shape):
-        x = keras.layers.Dense(filters, activation='relu', name = __NAME_PREVIX__ + "dense_" + str(cnt) )(x)
+        x = keras.layers.Dense(filters, activation=activation, name = __NAME_PREVIX__ + "dense_" + str(cnt) )(x)
 
     x = tf.keras.layers.Reshape([1, 1, dense_shape[-1]])(x)
 
@@ -33,17 +56,16 @@ def HW_Gen_CONV(discriminator):
 
     cnt = 1
     for cnt, filters in enumerate(deconv_shape):
-        layer = keras.layers.Conv2DTranspose ( filters, kernel_size, activation='relu',
+        layer = keras.layers.Conv2DTranspose ( filters, kernel_size, activation=activation,
                                                name = __NAME_PREVIX__ + "transpseconv_" + str(cnt) )
         x = layer(x)
 
-    print          x
     x = keras.layers.Cropping2D(cropping=((0, 1), (0, 0)), name = __NAME_PREVIX__ + "cropping")(x)
 
     cnt = 1
     last_layer_channel = deconv_shape[-1] / 2
     while last_layer_channel > 6:
-        layer = keras.layers.Conv2D (last_layer_channel, [1,1], activation='relu',
+        layer = keras.layers.Conv2D (last_layer_channel, [1,1], activation=activation,
                                      name = __NAME_PREVIX__ + "1X1_conv_" + str(cnt) )
         x = layer(x)
         cnt += 1
@@ -51,39 +73,27 @@ def HW_Gen_CONV(discriminator):
         last_layer_channel /= 2
 
     x = keras.layers.Conv2D (6, [1,1],
-                             activation = 'sigmoid', # 'relu',
+                             activation = activation,
                              name = __NAME_PREVIX__ + "1X1_conv_last" )(x)
-    x = tf.keras.layers.Reshape([64, 6], name = __NAME_PREVIX__ + "script")(x)
 
-    #x = x / 6.0
 
-    x = x * np.array([fixed_range[1][1] - fixed_range[1][0],
-                      fixed_range[2][1] - fixed_range[2][0],
-                      fixed_range[3][1] - fixed_range[3][0],
-                      fixed_range[4][1] - fixed_range[4][0],
-                      fixed_range[5][1] - fixed_range[5][0],
-                      fixed_range[6][1] - fixed_range[6][0],
-    ])
+    x = tf.keras.layers.Reshape(disc_input_shape, name = __NAME_PREVIX__ + "script")(x)
 
-    x = x + np.array([fixed_range[1][0],
-                      fixed_range[2][0],
-                      fixed_range[3][0],
-                      fixed_range[4][0],
-                      fixed_range[5][0],
-                      fixed_range[6][0],
-    ])
+    x = normalize_into(x, fixed_range)
 
     script_tensor = x
 
-    pos = tf.keras.layers.Reshape([64, 3])(script_tensor[:,:,0:3])
+    '''
+    pos = script_tensor[:,:,0:3]
+
+    pos = tf.keras.layers.Reshape([64, 3])(pos)
 
     avg_pos = tf.keras.layers.AveragePooling1D (pool_size = 64)(pos)
+    '''
 
     discriminator_loss = discriminator_model(script_tensor)
 
-    avg_pos_loss = keras.layers.Subtract(name = __NAME_PREVIX__ + "avg_pos_loss_layer") ([seed, avg_pos])
-
-    avg_pos_loss = tf.keras.backend.mean(avg_pos_loss, axis = 2) * 375
+    #avg_pos_loss = keras.layers.Subtract(name = __NAME_PREVIX__ + "avg_pos_loss_layer") ([seed, avg_pos])
 
     #loss = (discriminator_loss + avg_pos_loss)
     loss = discriminator_loss
@@ -92,24 +102,7 @@ def HW_Gen_CONV(discriminator):
     #loss = tf.keras.layers.Multiply(name = __NAME_PREVIX__ + "loss_layer_output") ([discriminator_loss, avg_pos_loss])
     loss = tf.keras.layers.Multiply(name = __NAME_PREVIX__ + "loss_layer_output") ([loss, loss])
 
-    '''
-    discriminator_loss = tf.constant([1] * 10, dtype= float)
-    discriminator_loss = tf.keras.layers.Reshape([1])(discriminator_loss)
-    print discriminator_loss
-
-    l = tf.keras.layers.Multiply(name = __NAME_PREVIX__ + "loss_layer_output")
-    loss = l ([discriminator_loss, avg_pos_loss])
-    print l
-    print l.name
-    print loss
-    print 11111
-    print 11111
-    print 11111
-    print 11111
-    print 11111
-    '''
-    
-    model = keras.Model(inputs=seed, outputs=[loss,script_tensor] , name= __NAME__)
+    model = keras.Model(inputs=seed, outputs=[loss, script_tensor] , name= __NAME__)
 
     model.compile(optimizer = 'adam',
                   loss = {
@@ -153,36 +146,69 @@ def load_discriminator(path, model_name):
 
     return discri
 
+def test_discriminator(disc_name):
+    discr = load_discriminator(output_path, disc_name)
+    discr_model = discr[2]
+    test, train = load_np_data(output_path, )
+
+    test_x = test[0][:1000]
+    test_y = test[1][:1000]
+    answer = discr_model.predict(test_x)
+    print "!!!!!!!!!"
+    print test_x.shape
+
+    for index in range(0,test_x.shape[0], 10):
+        print "ground  Y : %r" % test_y[index]
+        #print "As " + str(answer[index])
+        print "predict Y : %r" % answer[index]
+        script = test_x[index]
+        print script.shape
+        script = add_time_axis(script)
+        visualize_script(script)
+
+
+    return
+
 def main():
-    name = "hw"
+    disc_name = "hw_disc"
 
-    #test, train = load_np_data(output_path, False)
+    #test_discriminator(disc_name)
 
-    discr = load_discriminator(output_path, name)
+    discr = load_discriminator(output_path, disc_name)
+    discr_model = discr[2]
 
     model = create_generator( discr )
 
-    size = 1000#00
-    data = [np.random.rand(size, 3) , np.zeros(size)]
-    data[0][:,0] -= 0.8
-    data[0][:,1] -= 0.8
-    data[0][:,2] *= 0.5
-    data[0][:,2] += 0.2
+    size = 100#000#00
+    data_x = normalize_into(np.random.rand(size, 6), fixed_range)[:,:3]
+    data = [data_x , np.zeros(size)]
 
     print data[0]
 
     model = fit_model(model, data, None, output_path + "/generator/")
 
 
-    size = 100
-    data = np.random.rand(size, 3)
+    size = 10000
+    size = 10
+    data = normalize_into(np.random.rand(size, 6), fixed_range)[:,:3]
     for index in range(data.shape[0]):
         seed = np.array(data[index,:]).reshape(1,-1)
         [losses, scripts] = model.predict(seed)
+        #[losses, avg_pos] = model.predict(seed)
         script = scripts[0]
+        pred_script = np.copy(script)
         script = add_time_axis(script)
+        print
+        print
+        print "For seed"
+        print seed
+        print "script:"
+        print script.mean(axis = 0)
         print script
         visualize_script(script)
+        [answer] = discr_model.predict(pred_script.reshape(1,64,6))
+        print 55555
+        print answer
 
     return
 

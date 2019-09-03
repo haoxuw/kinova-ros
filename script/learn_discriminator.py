@@ -1,9 +1,9 @@
 __N__ = -1
-__BATCH__ = 10
-__EPOCH__ = 3#10
+__BATCH__ = 1#32
+__EPOCH__ = 3
 __TEST_RATIO__ = 0.1
 
-__MAX_TRAJS__ = 50000000
+__MAX_TRAJS__ = 1e9
 __TEST_SIZE__ = 1000
 
 from process_scripts import *
@@ -47,7 +47,7 @@ def HW_Conv1D(input_shape):
         dim /= __FACTOR__
         x = keras.layers.Dense(dim, activation='relu', name = __NAME_PREVIX__ + "dense_" + str(cnt) )(x)
         cnt += 1
-    exit = keras.layers.Dense(1, activation='relu', name = __NAME_PREVIX__ + "exit" )(x)
+    exit = keras.layers.Dense(1, activation='sigmoid', name = __NAME_PREVIX__ + "exit" )(x)
 
     model = keras.Model(inputs=entry, outputs=exit, name= __NAME__)
 
@@ -58,7 +58,7 @@ def HW_Conv1D(input_shape):
 def create_discriminator(input_shape):
     model = HW_Conv1D(input_shape)
     model.compile(optimizer='adam',
-                  loss='MAE',
+                  loss='MSE',
                   metrics=['MAE']
     )
     model.build(input_shape)
@@ -135,18 +135,23 @@ def learn_trajs_from_task_files(path):
     return
 
 def load_np_data(path, chop_time = True):
-    max_traj = __MAX_TRAJS__
+    max_traj = int(__MAX_TRAJS__)
     x_train = load_from_npy(path + "x_train.npy")[:max_traj]
     if chop_time:
         x_train = x_train[:,:,1:]
+
     y_train = load_from_npy(path + "y_train.npy")[:max_traj]
+
+    print
+    print "Loaded data x.shape: %r, y.mean: %r" % ( x_train.shape, y_train.mean())
+    print
+    print
+    print
 
     x_test = load_from_npy(path + "x_test.npy")[:max_traj/10]
     if chop_time:
         x_test = x_test[:,:,1:]
     y_test = load_from_npy(path + "y_test.npy")[:max_traj/10]
-
-    print "Training on x.shape: %r, y.mean: %r" % ( x_train.shape, y_train.mean())
 
     test = (x_test, y_test)
     train = (x_train, y_train)

@@ -1,5 +1,5 @@
 mini = True
-#mini = False
+mini = False
 if mini == True:
     __OUTNAME__ = "mini"
     __AFFINE_MULTIPLIER__ = 50
@@ -7,9 +7,9 @@ if mini == True:
     __MUTATE_LENGTH__ = 10
 else:
     __OUTNAME__ = "fake"
-    __AFFINE_MULTIPLIER__ = 50
+    __AFFINE_MULTIPLIER__ = 100
     __MUTATE_MULTIPLIER__ = 20
-    __MUTATE_LENGTH__ = 1000
+    __MUTATE_LENGTH__ = 50
 
 import math
 
@@ -145,6 +145,8 @@ def load_task_file_under_path(path, n = -1):
 
 MAX_TIME = 32
 mutator = {
+    'x': [-0.1, 0.1], 
+    'y': [-0.1, 0.1], 
     'z': [0, 0.1], #z
     't': [-20,20],    #theta
     's': [0, 3.0]     #start
@@ -209,6 +211,12 @@ def affine_script(scri):
     duration = scri[-1][0]
 
     scri = scri[:]
+    x = np.random.uniform(*mutator['x'])
+    scri[:,1] += x
+
+    y = np.random.uniform(*mutator['y'])
+    scri[:,2] += y
+
     z = np.random.uniform(*mutator['z'])
     scri[:,3] += z
 
@@ -227,7 +235,7 @@ def affine_script(scri):
 
 def mutate_script(scri):
     MUTATION_NUM = MAX_TIME * HZ / 2
-    MUTATION_ratio_MAX = 0.05
+    MUTATION_ratio_MAX = 0.1
 
     dist = 0.0
     for i in range(MUTATION_NUM):
