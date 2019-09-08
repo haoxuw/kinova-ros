@@ -1,6 +1,6 @@
 __N__ = -1
-__BATCH__ = 1#32
-__EPOCH__ = 3
+__BATCH__ = 8
+__EPOCH__ = 1
 __TEST_RATIO__ = 0.1
 
 __MAX_TRAJS__ = 1e9
@@ -10,6 +10,7 @@ from process_scripts import *
 
 import sys, datetime
 import tensorflow as tf
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 from tensorflow import keras
 
@@ -17,9 +18,9 @@ def HW_Conv1D(input_shape):
     __NAME__ = 'hw_disc'
     __NAME_PREVIX__ = __NAME__ + "_"
     __FACTOR__ = 4
-    __FILTER_SIZE__ = 9
+    __FILTER_SIZE__ = 7
 
-    conv_shape = np.array([128,192,256,512,768,1024,2048])
+    conv_shape = np.array([128,192,256,256,256,256,256,512,512,512])
     filter_size = __FILTER_SIZE__
 
     stride = 1
@@ -34,6 +35,7 @@ def HW_Conv1D(input_shape):
         last_layer_x = (last_layer_x - filter_size + 2 * padding) / stride + 1
         #print last_layer_x
         if last_layer_x < 1:
+            print "last_layer_x %d < 1" % last_layer_x
             sys.exit(last_layer_x)
         x = keras.layers.Conv1D(i, filter_size, activation='relu', name = __NAME_PREVIX__+ 'conv1d_%d_x_%d' %(last_layer_x, i) )(x)
 
@@ -68,6 +70,10 @@ def fit_model(model, train, test, model_output_path, save_model = True):
     #print train[0].shape
     #print train[1].shape
 
+    print " -- training model -- "
+    print " x %r %r " % ( train[0].shape , train[0].mean(axis = 0))
+    print " y %r %r " % ( train[1].shape , train[1].mean(axis = 0))
+
     checkpoint_dir = os.path.dirname(model_output_path + model.name + "_cp.ckpt")
 
     # Create a callback that saves the model's weights
@@ -94,53 +100,16 @@ def fit_model(model, train, test, model_output_path, save_model = True):
 
     return model
 
-
-
-def report_stat(scripts):
-    print scripts.shape
-    for index in range(0,4):
-        rang = [np.amin(scripts[:,:,index]), np.amax(scripts[:,:,index])]
-        if rang[0] < fixed_range[index][0] or rang[1] > fixed_range[index][1]:
-            print "got " + str(rang) + " vs fixed_range " + str(fixed_range)
-            sys.exit(-6)
-        print "Range: " + str(rang)
-    
-def translate_into_3D(scripts):
-    report_stat(scripts)
-    for script in scripts:
-        visualize_script(script)
-    return scripts
-
-
-def learn_trajs_from_task_files(path):
-
-    names, dists, scripts = load_task_file_under_path(path, __N__);
-
-    features = scripts[:,:,1:]
-    #features = translate_into_3D(scripts)
-
-    labels = dists
-    assert(features.shape[0] == labels.shape[0])
-    size = features.shape[0]
-
-    test_size = int(__TEST_SIZE__)
-    test = (features[:test_size], labels[:test_size])
-    train = (features[test_size:], labels[test_size:])
-    train_ds = tf.data.Dataset.from_tensor_slices(train).shuffle(size).batch(__BATCH__)
-    test_ds = tf.data.Dataset.from_tensor_slices(test).batch(__BATCH__)
-
-    model = create_discriminator(scripts[0].shape)
-    fit_model(model, train, test, path)
-
-    return
-
-def load_np_data(path, chop_time = True):
-    max_traj = int(__MAX_TRAJS__)
-    x_train = load_from_npy(path + "x_train.npy")[:max_traj]
+def load_np_data(path, chop_time = True, max_size = -1, visualize = False):
+    max_size = int(__MAX_TRAJS__)
     if chop_time:
-        x_train = x_train[:,:,1:]
+        x_shape = [-1, 64, 7]
+    else:
+        x_shape = [-1, 64, 6]
+    y_shape = [-1, 1]
 
-    y_train = load_from_npy(path + "y_train.npy")[:max_traj]
+    x_train = load_from_npy(path + "x_train.npy", x_shape, max_size)
+    y_train = load_from_npy(path + "y_train.npy", y_shape, max_size)
 
     print
     print "Loaded data x.shape: %r, y.mean: %r" % ( x_train.shape, y_train.mean())
@@ -148,10 +117,22 @@ def load_np_data(path, chop_time = True):
     print
     print
 
-    x_test = load_from_npy(path + "x_test.npy")[:max_traj/10]
+    x_test = load_from_npy(path + "x_test.npy", x_shape, max_size/10)
+    y_test = load_from_npy(path + "y_test.npy", y_shape, max_size/10)
+
+    if visualize:
+        for i in range(0, 10000, 1333):
+            x = x_train[i]
+            y = y_train[i]
+            x = dequantize(x, fixed_range, 1)
+            visualize_script(x, dist = y)
+            #visualize_script(x_test[i])
+
+    if chop_time:
+        x_train = x_train[:,:,1:]
+
     if chop_time:
         x_test = x_test[:,:,1:]
-    y_test = load_from_npy(path + "y_test.npy")[:max_traj/10]
 
     test = (x_test, y_test)
     train = (x_train, y_train)
@@ -161,14 +142,14 @@ def load_np_data(path, chop_time = True):
 def learn_trajs(path, test, train):
 
     print "shuffle pool %r" % train[0].shape[0]*2
-    train_ds = tf.data.Dataset.from_tensor_slices(train).shuffle(train[0].shape[0]*2).batch(__BATCH__)
-    test_ds = tf.data.Dataset.from_tensor_slices(test).batch(__BATCH__)
+    #train_ds = tf.data.Dataset.from_tensor_slices(train).shuffle(train[0].shape[0]*2).batch(__BATCH__)
+    #test_ds = tf.data.Dataset.from_tensor_slices(test).batch(__BATCH__)
 
     model = create_discriminator(train[0].shape)
     fit_model(model, train, test, path)
 
 def main():
-    test,train = load_np_data(output_path)
+    test,train = load_np_data(output_path, visualize = False) #True)
     learn_trajs(output_path, test, train)
 
 
