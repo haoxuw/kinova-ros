@@ -7,8 +7,8 @@ if mini == True:
     __MUTATE_LENGTH__ = 10
 else:
     __OUTNAME__ = "fake"
-    __AFFINE_MULTIPLIER__ = 100
-    __MUTATE_MULTIPLIER__ = 10
+    __AFFINE_MULTIPLIER__ = 5000
+    __MUTATE_MULTIPLIER__ = 1
     __MUTATE_LENGTH__ = 20
 
 import math
@@ -36,6 +36,9 @@ def dequantize(data, min_max, start = 0):
     shape = data.shape
     data = data.reshape([-1, shape[-1]])
     for i in range(len(min_max)):
+        if i == 4:
+            data[:, i+start] = 0
+            continue
         data[: , i + start] *= min_max[i][1] - min_max[i][0]
         data[: , i + start] += min_max[i][0]
     return data.reshape(shape)
@@ -44,6 +47,9 @@ def quantize(data, min_max, start = 0):
     shape = data.shape
     data = data.reshape([-1, shape[-1]])
     for i in range(len(min_max)):
+        if i == 4:
+            data[:, i+start] = 0
+            continue
         data[: , i + start] -= min_max[i][0]
         data[: , i + start] /= min_max[i][1] - min_max[i][0]
     return data.reshape(shape)
@@ -68,7 +74,14 @@ def add_time_axis(script):
     script = np.concatenate([time_series, script] , axis = 1)
     return script
 
-def visualize_script(script, filename = None, dist = None):
+def visualize_script(script, filename = None, dist = None, dequant = True):
+    script = np.copy(script)
+
+    if (script.shape == (64,6)):
+        script = add_time_axis(script)
+
+    script = dequantize(script, fixed_range, start = 1)
+
     duration = script[-1][0]
     #t = np.array([(1 - t/duration, 0, t/duration) for t in script[:,0]])
     t = plt.cm.winter(np.array([t/duration for t in script[:,0]]))
@@ -87,8 +100,10 @@ def visualize_script(script, filename = None, dist = None):
     fig = plt.figure()
 
     title = 'Trajectory Visualization'
-    if dist != None:
+    if type(dist) == float:
         title +=  '(Score: %2.4f)' % dist
+    elif type(dist) == str:
+        title +=  ' ' + dist
     fig.suptitle(title)
 
     manager = plt.get_current_fig_manager()
@@ -261,19 +276,21 @@ def affine_script(scri):
 
 def mutate_script(scri):
     MUTATION_NUM = MAX_TIME * HZ / 10
-    MUTATION_ratio_MAX = 0.05
+    MUTATION_ratio_MAX = 0.1
 
     dist = 0.0
     for i in range(MUTATION_NUM):
         #ratio = np.random.uniform(-MUTATION_ratio_MAX, MUTATION_ratio_MAX)
         index = np.random.randint(scri.shape[0])
         column = np.random.randint(6)
-
-        ori = scri[index,column]
+        if column == 4:
+            continue
+        assert(scri.shape[-1] == 7)
+        ori = scri[index][column+1]
         new = np.random.uniform(fixed_range[column][0], fixed_range[column][1])
-        scri[index][column+1] = new
+        scri[index][column+1] = ori + (new - ori) * MUTATION_ratio_MAX
 
-        dist += abs(new-ori)
+        dist += 1
 
     return dist, scri
 
@@ -282,6 +299,8 @@ def dump_np_array(names, dists, scripts, path, output_suffix, plot_samples = Non
     cnt = 0
     arr_traj = []
     arr_dist = []
+
+    affine_arr_traj = []
 
     sample_img_dir = "/sample/"
 
@@ -301,6 +320,8 @@ def dump_np_array(names, dists, scripts, path, output_suffix, plot_samples = Non
             arr_traj.append(scri)
             arr_dist.append(dist)
 
+            affine_arr_traj.append(scri)
+
             for j in range(__MUTATE_MULTIPLIER__):
                 scri_mut = np.copy(scri)
                 dist_mut = dist
@@ -319,34 +340,52 @@ def dump_np_array(names, dists, scripts, path, output_suffix, plot_samples = Non
     arr_dist = np.array(arr_dist)
     arr_dist /= np.max(arr_dist)
 
-    if plot_samples:
-        os.system('mkdir -p ' + output_path + sample_img_dir)
-        for i in range(0, len(arr_traj), len(arr_traj) / 15):
-            filename = output_path + sample_img_dir + "/" + plot_samples + '_sample_%d.png' %i
-            visualize_script(arr_traj[i], filename, dist = arr_dist[i])
-            #visualize_script(arr_traj[i], dist = arr_dist[i])
-
     arr_traj = quantize(arr_traj, fixed_range, start = 1)
 
-    print arr_traj.shape
-    print arr_traj.min(axis = 0).min(axis = 0)
-    print arr_traj.max(axis = 0).max(axis = 0)
-                
     save_to_npy(arr_traj, path + "x_" + output_suffix)
     save_to_npy(arr_dist, path + "y_" + output_suffix)
     
+
+    affine_arr_traj = np.array(affine_arr_traj)
+    affine_arr_traj = quantize(affine_arr_traj, fixed_range, start = 1)
+    save_to_npy(affine_arr_traj, path + "affine_" + output_suffix)
+
+
+    #after saved
+    print "after quantize"
+    print arr_traj.shape
+    print "min:"
+    print arr_traj.min(axis = 0).min(axis = 0)
+    print "max:"
+    print arr_traj.max(axis = 0).max(axis = 0)
+
+    if plot_samples:
+        os.system('mkdir -p ' + output_path + sample_img_dir)
+        for i in range(0, len(affine_arr_traj), len(affine_arr_traj) / 15):
+            filename = output_path + sample_img_dir + "/" + plot_samples + '_affile_sample_%d.png' %i
+            traj = affine_arr_traj[i]
+            #visualize_script(traj)
+            visualize_script(arr_traj[i], filename, dist = arr_dist[i])
+        for i in range(0, len(arr_traj), len(arr_traj) / 15):
+            filename = output_path + sample_img_dir + "/" + plot_samples + '_sample_%d.png' %i
+            traj = arr_traj[i]
+            #visualize_script(traj, dist = arr_dist[i])
+            visualize_script(arr_traj[i], filename, dist = arr_dist[i])
+                
+    arr_traj = dequantize(arr_traj, fixed_range, start = 1)
+    print "after dequantize"
+    print arr_traj.shape
+    print "min:"
+    print arr_traj.min(axis = 0).min(axis = 0)
+    print "max:"
+    print arr_traj.max(axis = 0).max(axis = 0)
+
 def create_fake_trajs():
     names, dists, scripts = load_task_file_under_path(path);
 
     test = 2
     dump_np_array(names[:2], dists[:2], scripts[:2], output_path, output_suffix = "test.npy", plot_samples = "test_data")
     dump_np_array(names[2:], dists[2:], scripts[2:], output_path, output_suffix = "train.npy", plot_samples = "train_data")
-
-def visualize_trajs(path):
-    names, dists, scripts = load_task_file_under_path(path, 100);
-
-    for name, dist, scri_ori in zip(names, dists, scripts):
-        visualize_script(scri_ori, dist = dist)
 
 
 path = "/home/haoxuw/mcgill/kinova/src/kinova-ros/script/tracked_results/"
