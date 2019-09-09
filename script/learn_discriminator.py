@@ -1,5 +1,5 @@
 __N__ = -1
-__BATCH__ = 8
+__BATCH__ = 4
 __EPOCH__ = 1
 __TEST_RATIO__ = 0.1
 
@@ -16,8 +16,19 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 from tensorflow import keras
 
+
+
+__DISC_MODEL_NAME__ = "hw_disc"
+__GENE_MODEL_NAME__ = "hw_gene"
+__AUTO_MODEL_NAME__ = "hw_auto"
+__DISC_FOLDER__ = "/disc/"
+__GENE_FOLDER__ = "/gene/"
+__AUTO_FOLDER__ = "/auto/"
+
+
+
 def HW_Conv1D(input_shape):
-    __NAME__ = 'hw_disc'
+    __NAME__ = __DISC_MODEL_NAME__
     __NAME_PREVIX__ = __NAME__ + "_"
     __FACTOR__ = 4
     __FILTER_SIZE__ = 7
@@ -68,7 +79,7 @@ def create_discriminator(input_shape):
     model.build(input_shape)
     return model
 
-def fit_model(model, train, test, model_output_path, save_model = True, epoch = __EPOCH__):
+def fit_model(model, train, test, model_output_path, save_model = True, epoch = __EPOCH__, visualize = True):
     #print train[0].shape
     #print train[1].shape
 
@@ -91,23 +102,24 @@ def fit_model(model, train, test, model_output_path, save_model = True, epoch = 
     if test:
         model.evaluate(*test)
 
-        answer = model.predict(test[0])
-        for index in range(15):#range(test[0].shape[0]):
-            print "%d As %r" % (index, answer[index])
-            print "%d Vs %r" % (index, test[1][index])
+        if visualize:
+            answer = model.predict(test[0])
+            for index in range(15):#range(test[0].shape[0]):
+                print "%d As %r" % (index, answer[index])
+                print "%d Vs %r" % (index, test[1][index])
 
-            print answer[index].shape
-            visualize_script(test[0][index], dist = 'test')
-            visualize_script(answer[index], dist = 'pred')
-            filename = output_path + '/fit_pred_sample_%d.png' % index
-            visualize_script(answer[index], dist = 'pred', filename = filename)
-            filename = output_path + '/fit_test_sample_%d.png' % index
-            visualize_script(test[0][index], dist = 'test', filename = filename)
+                print answer[index].shape
+                visualize_script(test[0][index], dist = 'test')
+                visualize_script(answer[index], dist = 'pred')
+                filename = output_path + '/fit_pred_sample_%d.png' % index
+                visualize_script(answer[index], dist = 'pred', filename = filename)
+                filename = output_path + '/fit_test_sample_%d.png' % index
+                visualize_script(test[0][index], dist = 'test', filename = filename)
 
     return model
 
 def load_np_data(path, chop_time = True, max_size = -1, visualize = False):
-    max_size = int(__MAX_TRAJS__)
+
     if chop_time:
         x_shape = [-1, 64, 7]
     else:
@@ -131,11 +143,11 @@ def load_np_data(path, chop_time = True, max_size = -1, visualize = False):
     affine_test = load_from_npy(path + "affine_test.npy", x_shape, max_size/10)
 
     if visualize:
-        for i in range(0, 10000, 1333):
+        for i in range(0, 100, 10):
             x = x_train[i]
             y = y_train[i]
             #visualize_script(x, dist = y)
-        for i in range(0, 100, 1):
+        for i in range(0, 10):
             x = affine_test[i]
             #visualize_script(x, dist = 0.001)
 
@@ -151,18 +163,18 @@ def load_np_data(path, chop_time = True, max_size = -1, visualize = False):
 
     return test, train, affine_test, affine_train
 
-def learn_trajs(path, test, train):
+def create_and_fit_discriminator(test, train, path):
 
     print "shuffle pool %r" % train[0].shape[0]*2
     #train_ds = tf.data.Dataset.from_tensor_slices(train).shuffle(train[0].shape[0]*2).batch(__BATCH__)
     #test_ds = tf.data.Dataset.from_tensor_slices(test).batch(__BATCH__)
 
     model = create_discriminator(train[0].shape)
-    fit_model(model, train, test, path, epoch = __EPOCH__*7)
+    fit_model(model, train, test, path, epoch = __EPOCH__*7, visualize = False)
 
 def main():
     test, train, _, _ = load_np_data(output_path, visualize = False) #True)
-    learn_trajs(output_path, test, train)
+    create_and_fit_discriminator(test, train, path = output_path + __DISC_FOLDER__)
 
 
 if __name__== "__main__":

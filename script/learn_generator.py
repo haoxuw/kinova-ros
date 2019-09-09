@@ -6,9 +6,14 @@ import sys, datetime
 from tensorflow.keras.layers import *
 
 __DISC_MODEL_NAME__ = "hw_disc"
+__GENE_MODEL_NAME__ = "hw_gene"
+__AUTO_MODEL_NAME__ = "hw_auto"
+__DISC_FOLDER__ = "/disc/"
+__GENE_FOLDER__ = "/gene/"
+__AUTO_FOLDER__ = "/auto/"
 
 def HW_autoencoder(input_shape):
-    __NAME__ = 'hw_au'
+    __NAME__ = __AUTO_MODEL_NAME__
     __NAME_PREVIX__ = __NAME__ + "_"
 
     __FILTER_SIZE__ = 7
@@ -59,9 +64,9 @@ def HW_autoencoder(input_shape):
 
 
 
-    entry = keras.Input(shape=input_shape[1:], name = __NAME_PREVIX__ + "entry")
+    ori_input = keras.Input(shape=input_shape[1:], name = __NAME_PREVIX__ + "input")
 
-    x = entry
+    x = ori_input
 
     stride = 1
     padding = 0
@@ -86,7 +91,7 @@ def HW_autoencoder(input_shape):
 
     x = keras.layers.Conv1D(6, last_layer_x, activation=activation, name = __NAME_PREVIX__+ 'conv1d_bottlenek' )(x)
 
-    x = tf.keras.layers.Reshape((1,6), name = __NAME_PREVIX__ + "seed")(x)
+    x = tf.keras.layers.Reshape((1,6), name = __NAME_PREVIX__ + "entry")(x)
 
     seed = x
 
@@ -120,7 +125,7 @@ def HW_autoencoder(input_shape):
 
     exit = x
 
-    model = keras.Model(inputs=entry, outputs=exit , name= __NAME__)
+    model = keras.Model(inputs=ori_input, outputs=exit , name= __NAME__)
 
     model.compile(optimizer = 'adam',
                   loss = 'MSE',
@@ -131,7 +136,7 @@ def HW_autoencoder(input_shape):
     return model
 
 def HW_Gen_CONV(discriminator):
-    __NAME__ = 'hw_gen'
+    __NAME__ = __DISC_MODEL_NAME__
     __NAME_PREVIX__ = __NAME__ + "_"
 
     __FILTER_SIZE__ = 9
@@ -238,7 +243,7 @@ def create_generator(discriminator):
     
     return model
 
-def load_discriminator(path, model_name, trainable = False):
+def load_model(path, model_name, trainable = False):
     model = tf.keras.models.load_model(path + "/" + model_name + ".h5")
     model.trainable = trainable
 
@@ -267,21 +272,17 @@ def gen_seeds(size = 10000):
 
     return seeds
 
-def create_and_fit_autoencoder(affine_train, affine_test, size = 10000):
+def create_and_fit_autoencoder(affine_train, affine_test, path):
     auto_model = HW_autoencoder(affine_train.shape)
 
     affine_data_train = [affine_train, affine_train]
     affine_data_test = [affine_test, affine_test]
 
-    for i in range(0, 100, 1):
-        x = affine_test[i]
-        #visualize_script(x, dist = 0.031)
-
-    fit_model(auto_model, affine_data_train, affine_data_test, output_path + "/auto/", epoch = epoch*7)
+    fit_model(auto_model, affine_data_train, affine_data_test, path, epoch = epoch, visualize = False)
 
     return auto_model
 
-def create_and_fit_generator(discr, demo_data, size = 10000):
+def create_and_fit_generator(discr, demo_data, path, size = 10000):
 
     discr_model = discr[2]
 
@@ -294,7 +295,7 @@ def create_and_fit_generator(discr, demo_data, size = 10000):
     #sampled_data = merge_data(random_data, demo_data, size = size)
     sampled_data = random_data
 
-    gen_model = fit_model(gen_model, sampled_data, None, output_path + "/generator/")
+    gen_model = fit_model(gen_model, sampled_data, path)
 
     gen_predicted_data = predict_scripts(gen_model, seeds)
 
@@ -335,10 +336,9 @@ def merge_data(data1, data2, size = 10000, ratio = 0.5):
 
 
 def run_iteration(demo_data, iteration = 0, size = 10000, save_samples = "/saved_figs/"):
-    disc_name = __DISC_MODEL_NAME__
 
     print "\n\n-------- load_discriminator  ----------\n\n"
-    discr = load_discriminator(output_path, disc_name)
+    discr = load_model(output_path + __DISC_FOLDER__, __DISC_MODEL_NAME__)
 
     print "\n\n-------- create_and_fit_generator  ----------\n\n"
     gen_model, gen_predicted_data = create_and_fit_generator(discr = discr, demo_data = demo_data, size = size)
@@ -357,7 +357,7 @@ def run_iteration(demo_data, iteration = 0, size = 10000, save_samples = "/saved
             visualize_script(pred_script, filename = path + "/iter_" + str(iteration) + "_fig_" + str(pred_index) + ".png", dist = dist)
 
     print "\n\n-------- load_discriminator, trainable  ----------\n\n"
-    discr_model = load_discriminator(output_path, disc_name, True)[2]
+    discr_model = load_model(output_path + __DISC_FOLDER__, __DISC_MODEL_NAME__, trainable = True)[2]
 
     sample = merge_data(gen_predicted_data, demo_data, size = size)
 
@@ -367,10 +367,13 @@ def run_iteration(demo_data, iteration = 0, size = 10000, save_samples = "/saved
     return gen_model
 
 def main():
-    test, train, affine_test, affine_train = load_np_data(output_path, max_size = -1, visualize = True)
-    size = 10000
+    size = 100#-1
+    test, train, affine_test, affine_train = load_np_data(output_path, max_size = size, visualize = False)
 
-    auto_model = create_and_fit_autoencoder (affine_train, affine_test, size)
+    auto_model = create_and_fit_autoencoder (affine_train, affine_test, path = output_path + __AUTO_FOLDER__)
+    decoder = load_model (path = output_path + __AUTO_FOLDER__, model_name = __AUTO_MODEL_NAME__)
+    print decoder
+    print decoder[2].summary()
     return
     #y = train[1]
     #print " >>>>>>>>>>>>>>> y %r %r " % ( y.shape , y.mean(axis = 0))
