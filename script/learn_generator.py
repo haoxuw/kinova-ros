@@ -13,6 +13,8 @@ def HW_autoencoder(input_shape):
 
     __FILTER_SIZE__ = 7
 
+    __SEED_TRANS_NUM__ = 5
+
     __SHAPE__ = [32, 64, 128, 256, 512, 512, 512, 512, 1024, 2048]
 
 
@@ -42,9 +44,9 @@ def HW_autoencoder(input_shape):
         s = seed
         (b_size, x_size, y_size, c_size) = base_layer.output_shape
         s51 = keras.layers.Dense(c_size, activation=activation, name = __NAME_PREVIX__ + "dense51_%d_num_%d" %(filters, j) )(s)
-        s52 = keras.layers.Dense(c_size, activation=activation, name = __NAME_PREVIX__ + "dense52_%d_num_%d" %(filters, j) )(s)
-        s53 = keras.layers.Dense(c_size, activation=activation, name = __NAME_PREVIX__ + "dense53_%d_num_%d" %(filters, j) )(s)
-        s54 = keras.layers.Dense(c_size, activation=activation, name = __NAME_PREVIX__ + "dense54_%d_num_%d" %(filters, j) )(s)
+        s52 = keras.layers.Dense(c_size, activation=activation, name = __NAME_PREVIX__ + "dense52_%d_num_%d" %(filters, j) )(s51)
+        s53 = keras.layers.Dense(c_size, activation=activation, name = __NAME_PREVIX__ + "dense53_%d_num_%d" %(filters, j) )(s52)
+        s54 = keras.layers.Dense(c_size, activation=activation, name = __NAME_PREVIX__ + "dense54_%d_num_%d" %(filters, j) )(s53)
         s5 = keras.layers.Dense(x_size * c_size, activation=activation, name = __NAME_PREVIX__ + "dense5_%d_num_%d" %(filters, j) )(s54)
         s5 = tf.keras.layers.Reshape([x_size, y_size, c_size])(s5)
 
@@ -64,6 +66,8 @@ def HW_autoencoder(input_shape):
     stride = 1
     padding = 0
     activation = 'relu'
+
+    seed_trans_num = __SEED_TRANS_NUM__
 
     last_layer_x = input_shape[1]
     last_index = 0
@@ -86,23 +90,31 @@ def HW_autoencoder(input_shape):
 
     seed = x
 
-    seed2d = tf.keras.layers.Reshape((1,1,6), name = __NAME_PREVIX__ + "seed2d")(x)
+    seed2d = tf.keras.layers.Reshape((1,1,6), name = __NAME_PREVIX__ + "seed2d")(seed)
 
-    x = keras.layers.Conv2DTranspose(6, (last_layer_x, 1), activation=activation, name = __NAME_PREVIX__+ 'deconv_first' )(seed2d)
+    start = seed2d
+    for i in range(seed_trans_num):
+        start = keras.layers.Dense(6, activation=activation, name = __NAME_PREVIX__ + "dense_start_num_%d" %(i) )(start)
+    
+    x = start
+    for i in range(seed_trans_num):
+        x = keras.layers.Dense(6, activation=activation, name = __NAME_PREVIX__ + "dense_seed_num_%d" %(i) )(x)
+    
+    x = keras.layers.Conv2DTranspose(6, (last_layer_x, 1), activation=activation, name = __NAME_PREVIX__+ 'deconv_first' )(x)
 
     transeconv_shape = range(last_index)
     transeconv_shape.reverse()
     print "!"
     for j in transeconv_shape:
         filters = conv_shape[j]
-        x = add_repetition_unit_v1(x, seed2d, filters, j)
+        x = add_repetition_unit_v2(x, seed2d, filters, j)
 
 
     x = keras.layers.Conv2DTranspose(6, (filter_size, 1), activation=activation, name = __NAME_PREVIX__+ 'deconv_last_layer' )(x)
 
     x = keras.layers.Cropping2D(cropping=((1, 0), (0, 0)), name = __NAME_PREVIX__ + "cropping")(x)
 
-    x = tf.keras.layers.concatenate( [ seed2d , x], axis = 1)
+    x = tf.keras.layers.concatenate( [ start , x], axis = 1)
 
     x = tf.keras.layers.Reshape((64,6), name = __NAME_PREVIX__ + "exit")(x)
 
