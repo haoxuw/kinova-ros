@@ -8,6 +8,7 @@ from tensorflow.keras.layers import *
 __DISC_MODEL_NAME__ = "hw_disc"
 __GENE_MODEL_NAME__ = "hw_gene"
 __AUTO_MODEL_NAME__ = "hw_auto"
+__DECODER_NAME__ = "hw_decoder"
 __DISC_FOLDER__ = "/disc/"
 __GENE_FOLDER__ = "/gene/"
 __AUTO_FOLDER__ = "/auto/"
@@ -40,7 +41,7 @@ def HW_autoencoder(input_shape):
         x1 = base_layer(x)
 
         x21 = keras.layers.Conv2DTranspose(filters, (filter_size, 1), activation=activation, padding = 'same', name = __NAME_PREVIX__+ 'deconv21_%d_num_%d' %(filters, j) )(x)
-        x2 = keras.layers.Conv2DTranspose(filters, (filter_size, 1), activation=activation, name = __NAME_PREVIX__+ 'deconv2_%d_num_%d' %(filters, j) )(x21)
+        x2 = keras.layers.Conv2DTranspose(filters, (filter_size, 1), activation=activation, name = __NAME_PREVIX__+ 'deconv2_%d_num_%d' %(filters, j) )(x)
 
         x31 = keras.layers.Conv2DTranspose(filters, (filter_size, 1), activation=activation, padding = 'same', name = __NAME_PREVIX__+ 'deconv31_%d_num_%d' %(filters, j) )(x)
         x32 = keras.layers.Conv2DTranspose(filters, (filter_size, 1), activation=activation, padding = 'same', name = __NAME_PREVIX__+ 'deconv32_%d_num_%d' %(filters, j) )(x31)
@@ -55,8 +56,7 @@ def HW_autoencoder(input_shape):
         s5 = keras.layers.Dense(x_size * c_size, activation=activation, name = __NAME_PREVIX__ + "dense5_%d_num_%d" %(filters, j) )(s54)
         s5 = tf.keras.layers.Reshape([x_size, y_size, c_size])(s5)
 
-
-        x = x1 + x2 + x3 + s5
+        x = keras.layers.Add(name = __NAME_PREVIX__+ 'add_num_%d' %(j))([x1, x2, x3, s5])
         return x
 
 
@@ -91,7 +91,7 @@ def HW_autoencoder(input_shape):
 
     x = keras.layers.Conv1D(6, last_layer_x, activation=activation, name = __NAME_PREVIX__+ 'conv1d_bottlenek' )(x)
 
-    x = tf.keras.layers.Reshape((1,6), name = __NAME_PREVIX__ + "entry")(x)
+    x = tf.keras.layers.Reshape((1,6), name = __DECODER_NAME__ + "_entry")(x)
 
     seed = x
 
@@ -112,7 +112,7 @@ def HW_autoencoder(input_shape):
     print "!"
     for j in transeconv_shape:
         filters = conv_shape[j]
-        x = add_repetition_unit_v2(x, seed2d, filters, j)
+        x = add_repetition_unit_v1(x, seed2d, filters, j)
 
 
     x = keras.layers.Conv2DTranspose(6, (filter_size, 1), activation=activation, name = __NAME_PREVIX__+ 'deconv_last_layer' )(x)
@@ -121,7 +121,7 @@ def HW_autoencoder(input_shape):
 
     x = tf.keras.layers.concatenate( [ start , x], axis = 1)
 
-    x = tf.keras.layers.Reshape((64,6), name = __NAME_PREVIX__ + "exit")(x)
+    x = tf.keras.layers.Reshape((64,6), name = __DECODER_NAME__ + "_exit")(x)
 
     exit = x
 
@@ -135,8 +135,8 @@ def HW_autoencoder(input_shape):
 
     return model
 
-def HW_Gen_CONV(discriminator):
-    __NAME__ = __DISC_MODEL_NAME__
+def HW_Gen_CONV(decoder_pack, discriminator_pack):
+    __NAME__ = __GENE_MODEL_NAME__
     __NAME_PREVIX__ = __NAME__ + "_"
 
     __FILTER_SIZE__ = 9
@@ -144,106 +144,74 @@ def HW_Gen_CONV(discriminator):
     __DECONV_SHAPE__ = [32, 64, 128, 256, 512, 512, 1024, 2048]
     __DENSE_SHAPE__ = [32]
 
-    seed = keras.Input(shape=(6), name = __NAME_PREVIX__ + "seed")
+    seed = keras.Input(shape=(1,6), name = __NAME_PREVIX__ + "seed")
     x = seed
 
-    [entry, exit, discriminator_model] = discriminator
-    disc_input_shape = entry.input_shape[0][1:]
-    #print disc_input_shape
+    [deco_entry, deco_exit, deco_model] = decoder_pack
+    [disc_entry, disc_exit, disc_model] = discriminator_pack
+    deco_model.trainable = True
 
-    dense_shape = __DENSE_SHAPE__
-    activation = 'relu'
-    #activation = 'linear'
-    #activation = 'sigmoid'
+    print deco_model.summary()
 
-    for cnt,filters in enumerate(dense_shape):
-        x = keras.layers.Dense(filters, activation=activation, name = __NAME_PREVIX__ + "dense_" + str(cnt) )(x)
-
-    x = tf.keras.layers.Reshape([1, 1, dense_shape[-1]])(x)
-
-    deconv_shape = __DECONV_SHAPE__
-
-    kernel_size = (__FILTER_SIZE__ , 1)
-
-    cnt = 1
-    for cnt, filters in enumerate(deconv_shape):
-        layer = keras.layers.Conv2DTranspose ( filters, kernel_size, activation=activation,
-                                               name = __NAME_PREVIX__ + "transpseconv_" + str(cnt) )
-        x = layer(x)
-
-    x = keras.layers.Cropping2D(cropping=((1, 1), (0, 0)), name = __NAME_PREVIX__ + "cropping")(x)
-
-    cnt = 1
-    last_layer_channel = deconv_shape[-1] / 2
-    while last_layer_channel > 6:
-        layer = keras.layers.Conv2D (last_layer_channel, [1,1], activation=activation,
-                                     name = __NAME_PREVIX__ + "1X1_conv_" + str(cnt) )
-        x = layer(x)
-        cnt += 1
-
-        last_layer_channel /= 2
-
-    last_activation = 'sigmoid'
-    x = keras.layers.Conv2D (6, [1,1],
-                             activation = last_activation,
-                             name = __NAME_PREVIX__ + "1X1_conv_last" )(x)
-
-
-    seed_2d = tf.keras.layers.Reshape([1, 1, 6])(seed)
-    x = tf.keras.layers.concatenate( [ seed_2d , x], axis = 1)
-
-    x = tf.keras.layers.Reshape(disc_input_shape, name = __NAME_PREVIX__ + "script")(x)
-
-    script_tensor = x
-
-    '''
-    pos = script_tensor[:,:,0:3]
-
-    pos = tf.keras.layers.Reshape([64, 3])(pos)
-
-    avg_pos = tf.keras.layers.AveragePooling1D (pool_size = 64)(pos)
-    '''
-
-    discriminator_loss = discriminator_model(script_tensor)
-
-    #avg_pos_loss = keras.layers.Subtract(name = __NAME_PREVIX__ + "avg_pos_loss_layer") ([seed, avg_pos])
-
-    #loss = (discriminator_loss + avg_pos_loss)
-    loss = discriminator_loss
-    #loss = avg_pos_loss
-
-    #loss = tf.keras.layers.Multiply(name = __NAME_PREVIX__ + "loss_layer_output") ([discriminator_loss, avg_pos_loss])
-    loss = tf.keras.layers.Multiply(name = __NAME_PREVIX__ + "loss_layer_output") ([loss, loss])
-
-    model = keras.Model(inputs=seed, outputs=[loss, script_tensor] , name= __NAME__)
-
-    for layer in model.layers:
+    for layer in deco_model.layers[:]:
         layer.trainable = True
 
-    for layer in discriminator_model.layers:
+        print layer.name
+
+        if layer.name != deco_entry.name:
+            deco_model._layers.pop(0)
+        else:
+            break
+
+    print deco_model.summary()
+    deco_model.compile(optimizer = 'adam', loss = "MAE")
+
+    deco_model_sub = keras.Model(inputs=deco_model.layers[0].input, outputs=deco_model.layers[-1].output, name= __GENE_MODEL_NAME__ + "_deco_model_sub")
+
+    decoder_entry = seed
+    print deco_entry
+    print dir(deco_entry)
+    deco_entry.input(seed)
+    print decoder_exit
+
+    print deco_model.summary()
+
+    decoder_sub_graph = keras.Model(inputs=seed, outputs=deco_exit.output, name= __GENE_MODEL_NAME__ + "_decoder_sub_graph")
+    print decoder_sub_graph.summary()
+    sys.exit()
+
+    #print sub_deco.summary()
+    sys.exit()
+
+
+
+
+
+    x = sub_deco(x)
+
+    sub_disc = keras.Model(inputs=disc_entry, outputs=disc_exit , name= __GENE_MODEL_NAME__ + "_sub_disc")
+
+    for layer in sub_disc.layers:
         layer.trainable = False
 
-    model.compile(optimizer = 'adam',
-                  loss = {
-                      #"tf_op_layer_mul" : 'MSE'
-                      __NAME_PREVIX__ + 'loss_layer_output' : 'MAE',
-                      },
-                  loss_weights = {
-                      #"tf_op_layer_mul" : 1.
-                      __NAME_PREVIX__ + 'loss_layer_output' : 1.,
-                      },
-                  )
+    x = sub_disc(x)
+
+    model = keras.Model(inputs=seed, outputs=x , name= __GENE_MODEL_NAME__)
+    
+    model.compile(optimizer = 'adam', loss = "MAE")
 
     print model.summary()
 
     return model
 
-def create_generator(discriminator):
-    model = HW_Gen_CONV(discriminator)
+def create_generator(decoder_pack, discriminator_pack):
+    print "\n\n-------- create generator  ----------\n\n"
+    
+    model = HW_Gen_CONV(decoder_pack = decoder_pack, discriminator_pack = discriminator_pack)
     
     return model
 
-def load_model(path, model_name, trainable = False):
+def load_model_pack(path, model_name, trainable = False, entry = "entry", exit = "exit"):
     model = tf.keras.models.load_model(path + "/" + model_name + ".h5")
     model.trainable = trainable
 
@@ -255,9 +223,9 @@ def load_model(path, model_name, trainable = False):
 
     discri = [None, None, model]
     for layer in model.layers:
-        if "entry" in layer.name:
+        if entry in layer.name:
             discri[0] = layer
-        elif "exit" in layer.name:
+        elif exit in layer.name:
             discri[1] = layer
 
     #print model.summary()
@@ -278,24 +246,21 @@ def create_and_fit_autoencoder(affine_train, affine_test, path):
     affine_data_train = [affine_train, affine_train]
     affine_data_test = [affine_test, affine_test]
 
-    fit_model(auto_model, affine_data_train, affine_data_test, path, epoch = epoch, visualize = False)
+    fit_and_save_model(auto_model, affine_data_train, affine_data_test, path, epoch = epoch, visualize = False)
 
     return auto_model
 
-def create_and_fit_generator(discr, demo_data, path, size = 10000):
+def create_and_fit_generator(decoder_pack, discr_pack, path, size = 10000):
 
-    discr_model = discr[2]
-
-    gen_model = create_generator( discr )
-
+    gen_model = create_generator( decoder_pack = decoder_pack, discriminator_pack = discr_pack )
+    return
     seeds = gen_seeds(size)
     losses = np.zeros(size)
     random_data = [seeds , losses]
 
-    #sampled_data = merge_data(random_data, demo_data, size = size)
     sampled_data = random_data
 
-    gen_model = fit_model(gen_model, sampled_data, path)
+    gen_model = fit_and_save_model(gen_model, sampled_data, path)
 
     gen_predicted_data = predict_scripts(gen_model, seeds)
 
@@ -337,11 +302,6 @@ def merge_data(data1, data2, size = 10000, ratio = 0.5):
 
 def run_iteration(demo_data, iteration = 0, size = 10000, save_samples = "/saved_figs/"):
 
-    print "\n\n-------- load_discriminator  ----------\n\n"
-    discr = load_model(output_path + __DISC_FOLDER__, __DISC_MODEL_NAME__)
-
-    print "\n\n-------- create_and_fit_generator  ----------\n\n"
-    gen_model, gen_predicted_data = create_and_fit_generator(discr = discr, demo_data = demo_data, size = size)
     return 
     #print demo_data[0].shape
     #print gen_predicted_data[0].shape
@@ -357,21 +317,32 @@ def run_iteration(demo_data, iteration = 0, size = 10000, save_samples = "/saved
             visualize_script(pred_script, filename = path + "/iter_" + str(iteration) + "_fig_" + str(pred_index) + ".png", dist = dist)
 
     print "\n\n-------- load_discriminator, trainable  ----------\n\n"
-    discr_model = load_model(output_path + __DISC_FOLDER__, __DISC_MODEL_NAME__, trainable = True)[2]
+    discr_model = load_model_pack(output_path + __DISC_FOLDER__, __DISC_MODEL_NAME__, trainable = True)[2]
 
     sample = merge_data(gen_predicted_data, demo_data, size = size)
 
     print "\n\n-------- re-train_discriminator with sampled gen+demo data ----------\n\n"
-    fit_model(discr_model, sample, None, output_path)
+    fit_and_save_model(discr_model, sample, None, output_path)
 
     return gen_model
 
 def main():
     size = 100#-1
-    test, train, affine_test, affine_train = load_np_data(output_path, max_size = size, visualize = False)
+    print "\n\n-------- loading train/test dataset  ----------\n\n"
+    #test, train, affine_test, affine_train = load_np_data(output_path, max_size = size, visualize = False)
 
-    auto_model = create_and_fit_autoencoder (affine_train, affine_test, path = output_path + __AUTO_FOLDER__)
-    decoder = load_model (path = output_path + __AUTO_FOLDER__, model_name = __AUTO_MODEL_NAME__)
+    print "\n\n-------- create_and_fit_autoencoder  ----------\n\n"
+    #auto_model = create_and_fit_autoencoder (affine_train, affine_test, path = output_path + __AUTO_FOLDER__)
+
+    print "\n\n-------- load_decoder from autoencoder  ----------\n\n"
+    decoder_pack = load_model_pack (path = output_path + __AUTO_FOLDER__, model_name = __AUTO_MODEL_NAME__, entry = __DECODER_NAME__ + "_entry", exit = __DECODER_NAME__ + "_exit") 
+
+    print "\n\n-------- load_discriminator  ----------\n\n"
+    discr_pack = load_model_pack(path = output_path + __DISC_FOLDER__, model_name = __DISC_MODEL_NAME__)
+
+    print "\n\n-------- create_and_fit_generator  ----------\n\n"
+    gen_model, gen_predicted_data = create_and_fit_generator(decoder_pack = decoder_pack, discr_pack = discr_pack, path = output_path + __GENE_FOLDER__, size = size)
+
     print decoder
     print decoder[2].summary()
     return

@@ -79,7 +79,7 @@ def create_discriminator(input_shape):
     model.build(input_shape)
     return model
 
-def fit_model(model, train, test, model_output_path, save_model = True, epoch = __EPOCH__, visualize = True):
+def fit_and_save_model(model, train, test, model_output_path, save_model = True, epoch = __EPOCH__, visualize = True):
     #print train[0].shape
     #print train[1].shape
 
@@ -170,7 +170,7 @@ def create_and_fit_discriminator(test, train, path):
     #test_ds = tf.data.Dataset.from_tensor_slices(test).batch(__BATCH__)
 
     model = create_discriminator(train[0].shape)
-    fit_model(model, train, test, path, epoch = __EPOCH__*7, visualize = False)
+    fit_and_save_model(model, train, test, path, epoch = __EPOCH__, visualize = False)
 
 def main():
     test, train, _, _ = load_np_data(output_path, visualize = False) #True)
