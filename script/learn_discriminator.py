@@ -11,12 +11,7 @@ epoch = __EPOCH__
 from process_scripts import *
 
 import sys, datetime
-import tensorflow as tf
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-
 from tensorflow import keras
-
-
 
 __DISC_MODEL_NAME__ = "hw_disc"
 __GENE_MODEL_NAME__ = "hw_gene"
@@ -40,7 +35,7 @@ def HW_Conv1D(input_shape):
     padding = 0
     last_layer_x = input_shape[1]
 
-    entry = keras.Input(shape=input_shape[1:], name = __NAME_PREVIX__ + "entry")
+    entry = keras.layers.Input(shape=input_shape[1:], name = __NAME_PREVIX__ + "entry")
 
     x = entry
 
@@ -85,13 +80,13 @@ def fit_and_save_model(model, train, test, model_output_path, save_model = True,
 
     print " -- training model -- "
 
-    checkpoint_dir = os.path.dirname(model_output_path + model.name + "_cp.ckpt")
+    checkpoint = model_output_path + model.name + "_cp.hdf5"
 
     # Create a callback that saves the model's weights
-    cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=model_output_path, save_weights_only=True, verbose=1)
+    cp_callback = keras.callbacks.ModelCheckpoint(filepath=checkpoint, verbose=1, save_best_only=True, mode='max')
 
     log_dir = model_output_path + "/logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
+    tensorboard_callback = keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 
     fit = model.fit(*train, epochs=epoch, batch_size=__BATCH__, validation_split=(__TEST_RATIO__), callbacks=[cp_callback, tensorboard_callback])
 
@@ -163,7 +158,7 @@ def load_np_data(path, chop_time = True, max_size = -1, visualize = False):
 
     return test, train, affine_test, affine_train
 
-def create_and_fit_discriminator(test, train, path):
+def create_and_fit_discriminator(train, test, path):
 
     print "shuffle pool %r" % train[0].shape[0]*2
     #train_ds = tf.data.Dataset.from_tensor_slices(train).shuffle(train[0].shape[0]*2).batch(__BATCH__)
@@ -173,8 +168,8 @@ def create_and_fit_discriminator(test, train, path):
     fit_and_save_model(model, train, test, path, epoch = __EPOCH__, visualize = False)
 
 def main():
-    test, train, _, _ = load_np_data(output_path, visualize = False) #True)
-    create_and_fit_discriminator(test, train, path = output_path + __DISC_FOLDER__)
+    max_size = 100
+    test, train, _, _ = load_np_data(output_path, visualize = False, max_size = max_size) #True)
 
 
 if __name__== "__main__":
