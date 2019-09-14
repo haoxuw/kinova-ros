@@ -118,7 +118,7 @@ def HW_decoder(input_shape):
 
     return model
 
-def HW_Gen_CONV(decoder_pack, discriminator_pack):
+def HW_Gene_Minimal_GAN(decoder_pack, discriminator_pack):
     __NAME__ = __GENE_MODEL_NAME__
     __NAME_PREVIX__ = __NAME__ + "_"
 
@@ -127,7 +127,7 @@ def HW_Gen_CONV(decoder_pack, discriminator_pack):
     __DECONV_SHAPE__ = [32, 64, 128, 256, 512, 512, 1024, 2048]
     __DENSE_SHAPE__ = [32]
 
-    seed = keras.layers.Input(shape=(1,6), name = __NAME_PREVIX__ + "seed")
+    seed = keras.layers.Input(shape=(1,6), name = __NAME_PREVIX__ + "entry")
     x = seed
 
     [deco_entry, deco_exit, deco_model] = decoder_pack
@@ -160,13 +160,14 @@ def HW_Gen_CONV(decoder_pack, discriminator_pack):
 def create_generator(decoder_pack, discriminator_pack):
     print "\n\n-------- create generator  ----------\n\n"
     
-    model = HW_Gen_CONV(decoder_pack = decoder_pack, discriminator_pack = discriminator_pack)
+    model = HW_Gene_Minimal_GAN(decoder_pack = decoder_pack, discriminator_pack = discriminator_pack)
     
     return model
 
 def load_model_pack(path, model_name, trainable = False, entry = "entry", exit = "exit"):
     model = keras.models.load_model(path + "/" + model_name + ".h5")
-    model.trainable = trainable
+    if trainable != None:
+        model.trainable = trainable
 
     model.compile(optimizer='adam',
                   loss='MAE',
@@ -205,7 +206,7 @@ def create_and_fit_decoder(affine_train, affine_test, path):
 
 def create_and_fit_generator(decoder_pack, discr_pack, affine_train, affine_test, path, size = 10000):
 
-    gen_model = create_generator( decoder_pack = decoder_pack, discriminator_pack = discr_pack )
+    gene_model = create_generator( decoder_pack = decoder_pack, discriminator_pack = discr_pack )
 
     seeds = gen_seeds(size)
     losses = np.zeros(size).reshape(-1,1)
@@ -215,11 +216,11 @@ def create_and_fit_generator(decoder_pack, discr_pack, affine_train, affine_test
 
     sampled_data = merge_data(random_data, affine_data, size, 0.5)
 
-    gen_model = fit_and_save_model(gen_model, sampled_data, None, path)
+    gene_model = fit_and_save_model(gene_model, sampled_data, None, path)
 
-    gen_predicted_data = predict_scripts(gen_model, seeds)
+    gen_predicted_data = predict_scripts(gene_model, seeds)
 
-    return gen_model, gen_predicted_data
+    return gene_model, gen_predicted_data
 
 
 def predict_scripts(model, seeds):
@@ -255,12 +256,10 @@ def merge_data(data1, data2, size = 10000, ratio = 0.5):
     return sample
 
 
-def run_iteration(demo_data, iteration = 0, size = 10000, save_samples = "/saved_figs/"):
+def run_iteration(gene_model, demo_data, iteration = 0, size = 10000, save_samples = "/saved_figs/"):
+    for layer in gene_model.layers:
+        print layer.name
 
-    return 
-    #print demo_data[0].shape
-    #print gen_predicted_data[0].shape
-    #print gen_predicted_data[1].shape
     if save_samples:
         path = output_path + save_samples
         os.system('mkdir -p ' + path)
@@ -279,35 +278,42 @@ def run_iteration(demo_data, iteration = 0, size = 10000, save_samples = "/saved
     print "\n\n-------- re-train_discriminator with sampled gen+demo data ----------\n\n"
     fit_and_save_model(discr_model, sample, None, output_path)
 
-    return gen_model
+    return gene_model
 
 def main():
     size = 100#-1
+
+    re_train = False
+    
     print "\n\n-------- loading train/test dataset  ----------\n\n"
     test, train, affine_test, affine_train = load_np_data(output_path, max_size = size, visualize = False)
 
-    print "\n\n-------- create_and_fit_discriminator  ----------\n\n"
-    create_and_fit_discriminator(train = train, test = test, path = output_path + __DISC_FOLDER__)
+    if re_train:
+        print "\n\n-------- create_and_fit_discriminator  ----------\n\n"
+        create_and_fit_discriminator(train = train, test = test, path = output_path + __DISC_FOLDER__)
 
-    print "\n\n-------- create_and_fit_decoder  ----------\n\n"
-   
-    deco_model = create_and_fit_decoder (affine_train = affine_train, affine_test = affine_test, path = output_path + __DECO_FOLDER__)
+        print "\n\n-------- create_and_fit_decoder  ----------\n\n"
+        deco_model = create_and_fit_decoder (affine_train = affine_train, affine_test = affine_test, path = output_path + __DECO_FOLDER__)
 
-    print "\n\n-------- load_decoder from decoder  ----------\n\n"
-    decoder_pack = load_model_pack (path = output_path + __DECO_FOLDER__, model_name = __DECO_MODEL_NAME__, entry = __DECO_MODEL_NAME__ + "_entry", exit = __DECO_MODEL_NAME__ + "_exit") 
+        print "\n\n-------- load_decoder from decoder  ----------\n\n"
+        decoder_pack = load_model_pack (path = output_path + __DECO_FOLDER__, model_name = __DECO_MODEL_NAME__, entry = __DECO_MODEL_NAME__ + "_entry", exit = __DECO_MODEL_NAME__ + "_exit") 
 
-    print "\n\n-------- load_discriminator  ----------\n\n"
-    discr_pack = load_model_pack(path = output_path + __DISC_FOLDER__, model_name = __DISC_MODEL_NAME__)
+        print "\n\n-------- load_discriminator  ----------\n\n"
+        discr_pack = load_model_pack(path = output_path + __DISC_FOLDER__, model_name = __DISC_MODEL_NAME__)
 
-    print "\n\n-------- create_and_fit_generator  ----------\n\n"
-    gen_model, gen_predicted_data = create_and_fit_generator(decoder_pack = decoder_pack, discr_pack = discr_pack, affine_train = affine_train, affine_test = affine_test, path = output_path + __GENE_FOLDER__, size = size)
+        print "\n\n-------- create_and_fit_generator  ----------\n\n"
+        gene_model, gen_predicted_data = create_and_fit_generator(decoder_pack = decoder_pack, discr_pack = discr_pack, affine_train = affine_train, affine_test = affine_test, path = output_path + __GENE_FOLDER__, size = size)
 
     #print " >>>>>>>>>>>>>>> y %r %r " % ( y.shape , y.mean(axis = 0))
 
-    for itera in range(100):
-        run_iteration(train, iteration = itera, size = size * (itera+1) )
+    loaded_gene_model_pack = load_model_pack(output_path + __GENE_FOLDER__, __GENE_MODEL_NAME__, trainable = None)
 
-    print gen_model.summary()
+    gene_entry, gene_exit, gene_model = loaded_gene_model_pack
+
+    for itera in range(1):
+        run_iteration(gene_model = gene_model, demo_data = train, iteration = itera, size = size * (itera+1) )
+
+    print gene_model.summary()
     
 if __name__== "__main__":
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
