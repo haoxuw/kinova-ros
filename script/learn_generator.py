@@ -333,13 +333,15 @@ def run_iteration(gene_model, affine_data, iteration = 0, size = 10000, path = _
     prefix = "posdisc_iter_" + str(iteration)
     save_sample_figures(gen_predicted_data, save_samples, size, prefix)
 
-    return gene_model
+    gene_model = None
+
+    return None
 
 def main():
-    size = 100000#-1
+    size = 1000000#-1
 
     re_train = False
-    #re_train = True
+    re_train = True
     
     print "\n\n-------- loading train/test dataset  ----------\n\n"
     test, train, affine_test, affine_train = load_np_data(output_path, max_size = size, visualize = False)

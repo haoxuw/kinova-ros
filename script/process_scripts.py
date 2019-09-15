@@ -7,9 +7,9 @@ if mini == True:
     __MUTATE_LENGTH__ = 10
 else:
     __OUTNAME__ = "fake"
-    __AFFINE_MULTIPLIER__ = 5000
+    __AFFINE_MULTIPLIER__ = 50000
     __MUTATE_MULTIPLIER__ = 1
-    __MUTATE_LENGTH__ = 20
+    __MUTATE_LENGTH__ = 4
 
 import math
 
@@ -55,7 +55,8 @@ def quantize(data, min_max, start = 0):
     return data.reshape(shape)
 
 def save_to_npy(data, name):
-    print "saving to file " + name
+    print "saving to file " + name + " of shape"
+    print data.shape
     np.save(name, data)
 
 def load_from_npy(name, shape, max_size):
@@ -80,7 +81,8 @@ def visualize_script(script, filename = None, dist = None, dequant = True):
     if (script.shape == (64,6)):
         script = add_time_axis(script)
 
-    script = dequantize(script, fixed_range, start = 1)
+    if dequant:
+        script = dequantize(script, fixed_range, start = 1)
 
     duration = script[-1][0]
     #t = np.array([(1 - t/duration, 0, t/duration) for t in script[:,0]])
@@ -100,12 +102,12 @@ def visualize_script(script, filename = None, dist = None, dequant = True):
     fig = plt.figure()
 
     title = 'Trajectory Visualization'
-    if type(dist) == float:
-        title +=  ' (Score: %2.4f)' % dist
     if type(dist) == np.ndarray:
         title +=  ' (Score: %2.4f)' % dist[0]
     elif type(dist) == str:
         title +=  ' ' + dist
+    else:
+        title += ' (Score: %r)' % dist
     fig.suptitle(title)
 
     manager = plt.get_current_fig_manager()
@@ -136,7 +138,7 @@ def visualize_script(script, filename = None, dist = None, dequant = True):
         plt.show()
     plt.close()
 
-    return script
+    return None
 
 def write_script_to_file(dist, script, fname):
     with open(fname,'w') as sfile:
@@ -277,23 +279,27 @@ def affine_script(scri):
 
 
 def mutate_script(scri):
-    MUTATION_NUM = MAX_TIME * HZ / 10
-    MUTATION_ratio_MAX = 0.1
+    MUTATION_NUM = MAX_TIME * HZ / __MUTATE_LENGTH__
+    MUTATION_ratio_MAX = 1 / __MUTATE_LENGTH__
 
     dist = 0.0
-    for i in range(MUTATION_NUM):
-        #ratio = np.random.uniform(-MUTATION_ratio_MAX, MUTATION_ratio_MAX)
-        index = np.random.randint(scri.shape[0])
-        column = np.random.randint(6)
-        if column == 4:
-            continue
-        assert(scri.shape[-1] == 7)
-        ori = scri[index][column+1]
-        new = np.random.uniform(fixed_range[column][0], fixed_range[column][1])
-        scri[index][column+1] = ori + (new - ori) * MUTATION_ratio_MAX
+    for j in range(__MUTATE_LENGTH__):
+        # accumulative
+        for i in range(MUTATION_NUM):
+            #ratio = np.random.uniform(-MUTATION_ratio_MAX, MUTATION_ratio_MAX)
+            index = np.random.randint(scri.shape[0])
+            column = np.random.randint(6)
+            if column == 4:
+                continue
+            assert(scri.shape[-1] == 7)
+            ori = scri[index][column+1]
+            new = np.random.uniform(fixed_range[column][0], fixed_range[column][1])
+            #scri[index][column+1] = ori + (new - ori) * MUTATION_ratio_MAX
+            scri[index][column+1] = new
 
-        dist += 1
+            dist += 1
 
+    #visualize_script(scri, dequant = False)
     return dist, scri
 
 def dump_np_array(names, dists, scripts, path, output_suffix, plot_samples = None, output_traj_files = False):
@@ -312,6 +318,7 @@ def dump_np_array(names, dists, scripts, path, output_suffix, plot_samples = Non
             scri = np.copy(scri_ori)
             scri = affine_script(scri)
             #visualize_script(scri)
+            #visualize_script(scri, dist = "affine", dequant = False)
             scri = expand_script(scri[:])
             #visualize_script(scri)
             dist = 0
@@ -319,28 +326,31 @@ def dump_np_array(names, dists, scripts, path, output_suffix, plot_samples = Non
                 write_script_to_file(dist, scri, output_path + "/fake_" + str(cnt) + "_affine.traj")
                 cnt += 1
 
-            arr_traj.append(scri)
-            arr_dist.append(dist)
+            arr_traj.append(np.copy(scri))
+            arr_dist.append(np.copy(dist))
 
-            affine_arr_traj.append(scri)
+            affine_arr_traj.append(np.copy(scri))
 
             for j in range(__MUTATE_MULTIPLIER__):
                 scri_mut = np.copy(scri)
                 dist_mut = dist
-                for i in range(__MUTATE_LENGTH__):
-                    # accumulative
-                    delta_dist, scri_mut = mutate_script(scri_mut)
-                    dist_mut += delta_dist
-                    if output_traj_files:
-                        write_script_to_file(dist, scri_mut, output_path + "/fake_" + str(cnt) + "_mutate.traj")
-                        cnt += 1
-                    arr_traj.append(np.copy(scri_mut))
-                    arr_dist.append(dist_mut)
-                    #visualize_script(scri_mut)
+
+                delta_dist, scri_mut = mutate_script(scri_mut)
+                dist_mut += delta_dist
+
+                if output_traj_files:
+                    write_script_to_file(dist, scri_mut, output_path + "/fake_" + str(cnt) + "_mutate.traj")
+                    cnt += 1
+
+                # now disc predict binary
+                dist_mut = 1
+                arr_traj.append(np.copy(scri_mut))
+                arr_dist.append(np.copy(dist_mut))
+                #visualize_script(scri_mut, dist = dist_mut, dequant = False)
 
     arr_traj = np.array(arr_traj)
     arr_dist = np.array(arr_dist)
-    arr_dist /= np.max(arr_dist)
+    #arr_dist /= np.max(arr_dist)
 
     arr_traj = quantize(arr_traj, fixed_range, start = 1)
 
@@ -363,16 +373,16 @@ def dump_np_array(names, dists, scripts, path, output_suffix, plot_samples = Non
 
     if plot_samples:
         os.system('mkdir -p ' + output_path + sample_img_dir)
-        for i in range(0, len(affine_arr_traj), len(affine_arr_traj) / 15):
+        for i in range(0, len(affine_arr_traj), len(affine_arr_traj) / 11):
             filename = output_path + sample_img_dir + "/" + plot_samples + '_affile_sample_%d.png' %i
             traj = affine_arr_traj[i]
-            #visualize_script(traj)
-            visualize_script(arr_traj[i], filename, dist = arr_dist[i])
-        for i in range(0, len(arr_traj), len(arr_traj) / 15):
+            #visualize_script(traj, dist = "affine")
+            visualize_script(traj, filename, dist = "affine transformed")
+        for i in range(0, len(arr_traj), len(arr_traj) / 11):
             filename = output_path + sample_img_dir + "/" + plot_samples + '_sample_%d.png' %i
             traj = arr_traj[i]
             #visualize_script(traj, dist = arr_dist[i])
-            visualize_script(arr_traj[i], filename, dist = arr_dist[i])
+            visualize_script(traj, filename, dist = "scrambled")
                 
     arr_traj = dequantize(arr_traj, fixed_range, start = 1)
     print "after dequantize"
