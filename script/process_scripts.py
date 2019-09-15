@@ -101,7 +101,9 @@ def visualize_script(script, filename = None, dist = None, dequant = True):
 
     title = 'Trajectory Visualization'
     if type(dist) == float:
-        title +=  '(Score: %2.4f)' % dist
+        title +=  ' (Score: %2.4f)' % dist
+    if type(dist) == np.ndarray:
+        title +=  ' (Score: %2.4f)' % dist[0]
     elif type(dist) == str:
         title +=  ' ' + dist
     fig.suptitle(title)

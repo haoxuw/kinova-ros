@@ -1,6 +1,6 @@
 __N__ = -1
-__BATCH__ = 4
-__EPOCH__ = 1
+__BATCH__ = 8
+__EPOCH__ = 2
 __TEST_RATIO__ = 0.1
 
 __MAX_TRAJS__ = 1e9
@@ -24,7 +24,7 @@ __AUTO_FOLDER__ = "/auto/"
 
 def HW_Conv1D(input_shape):
     __NAME__ = __DISC_MODEL_NAME__
-    __NAME_PREVIX__ = __NAME__ + "_"
+    __NAME_PREFIX__ = __NAME__ + "_"
     __FACTOR__ = 4
     __FILTER_SIZE__ = 7
 
@@ -35,7 +35,7 @@ def HW_Conv1D(input_shape):
     padding = 0
     last_layer_x = input_shape[1]
 
-    entry = keras.layers.Input(shape=input_shape[1:], name = __NAME_PREVIX__ + "entry")
+    entry = keras.layers.Input(shape=input_shape[1:], name = __NAME_PREFIX__ + "entry")
 
     x = entry
 
@@ -45,9 +45,9 @@ def HW_Conv1D(input_shape):
         if last_layer_x < 1:
             print "last_layer_x %d < 1" % last_layer_x
             sys.exit(last_layer_x)
-        x = keras.layers.Conv1D(i, filter_size, activation='relu', name = __NAME_PREVIX__+ 'conv1d_%d_x_%d' %(last_layer_x, i) )(x)
+        x = keras.layers.Conv1D(i, filter_size, activation='relu', name = __NAME_PREFIX__+ 'conv1d_%d_x_%d' %(last_layer_x, i) )(x)
 
-    x = keras.layers.Flatten(name = __NAME_PREVIX__ + "flatten")(x)
+    x = keras.layers.Flatten(name = __NAME_PREFIX__ + "flatten")(x)
 
     dim = conv_shape[-1] * input_shape[2] # last_layer_x * 
     dense_shape = []
@@ -55,9 +55,9 @@ def HW_Conv1D(input_shape):
     cnt = 0
     while dim > 4:
         dim /= __FACTOR__
-        x = keras.layers.Dense(dim, activation='relu', name = __NAME_PREVIX__ + "dense_" + str(cnt) )(x)
+        x = keras.layers.Dense(dim, activation='relu', name = __NAME_PREFIX__ + "dense_" + str(cnt) )(x)
         cnt += 1
-    exit = keras.layers.Dense(1, activation='sigmoid', name = __NAME_PREVIX__ + "exit" )(x)
+    exit = keras.layers.Dense(1, activation='sigmoid', name = __NAME_PREFIX__ + "exit" )(x)
 
     model = keras.Model(inputs=entry, outputs=exit, name= __NAME__)
 
@@ -75,8 +75,8 @@ def create_discriminator(input_shape):
     return model
 
 def fit_and_save_model(model, train, test, model_output_path, save_model = True, epoch = __EPOCH__, visualize = True):
-    #print train[0].shape
-    #print train[1].shape
+    print train[0].shape
+    print train[1].shape
 
     print " -- training model -- "
 
@@ -88,7 +88,10 @@ def fit_and_save_model(model, train, test, model_output_path, save_model = True,
     log_dir = model_output_path + "/logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     tensorboard_callback = keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 
-    fit = model.fit(*train, epochs=epoch, batch_size=__BATCH__, validation_split=(__TEST_RATIO__), callbacks=[cp_callback, tensorboard_callback])
+    callbacks = [cp_callback, tensorboard_callback]
+    callbacks = [tensorboard_callback]
+
+    fit = model.fit(train[0], train[1], epochs=epoch, batch_size=__BATCH__, validation_split=(__TEST_RATIO__), callbacks=callbacks)
 
     #model.save(model_output_path + model.name + '.tf', save_format="tf")
     if save_model:
