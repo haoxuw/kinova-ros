@@ -1,3 +1,5 @@
+from arg_parser import *
+
 mini = True
 mini = False
 if mini == True:
@@ -6,7 +8,6 @@ if mini == True:
     __MUTATE_MULTIPLIER__ = 10
     __MUTATE_LENGTH__ = 10
 else:
-    __OUTNAME__ = "fake"
     __AFFINE_MULTIPLIER__ = 50000
     __MUTATE_MULTIPLIER__ = 1
     __MUTATE_LENGTH__ = 4
@@ -400,8 +401,6 @@ def create_fake_trajs():
     dump_np_array(names[2:], dists[2:], scripts[2:], output_path, output_suffix = "train.npy", plot_samples = "train_data")
 
 
-path = "/home/haoxuw/mcgill/kinova/src/kinova-ros/script/tracked_results/"
-output_path = "/home/haoxuw/mcgill/kinova/src/kinova-ros/script/" + __OUTNAME__ + "_results/"
 def main():
     create_fake_trajs()
 
