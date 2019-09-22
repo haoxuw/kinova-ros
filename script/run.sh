@@ -2,10 +2,12 @@
 
 #set -x
 set -e
-unit_size=1000
+unit_size=100
 max_iter=100
 
-python learn_generator.py --max_size -1 --itera 0
+rm -rf final_results/NN_model*
+
+python learn_generator.py --max_size 10000 --itera 0
 
 for (( cnt=1; cnt <= max_iter; cnt++ ))
 do

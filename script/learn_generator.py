@@ -1,3 +1,5 @@
+import gc
+
 from learn_discriminator import *
 from process_scripts import *
 
@@ -178,7 +180,7 @@ def create_discriminator(input_shape):
     #model = HW_Disc_Conv1D(input_shape)
     model = HW_Disc_Dense(input_shape)
     model.compile(optimizer='adam',
-                  loss='MSE',
+                  loss='MAE',
                   metrics=['MAE']
     )
     model.build(input_shape)
@@ -208,7 +210,7 @@ def fit_and_save_model(model, train, test, model_output_path, save_model = True,
     checkpoint = model_output_path + model.name + "_cp.hdf5"
 
     # Create a callback that saves the model's weights
-    cp_callback = keras.callbacks.ModelCheckpoint(filepath=checkpoint, verbose=1, save_best_only=True, mode='max') #monitor='val_acc'
+    cp_callback = keras.callbacks.ModelCheckpoint(filepath=checkpoint, verbose=1, save_best_only=True, mode='auto') #monitor='val_acc'
 
     log_dir = model_output_path + "/logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     tensorboard_callback = keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
@@ -218,7 +220,14 @@ def fit_and_save_model(model, train, test, model_output_path, save_model = True,
     callbacks = [cp_callback, tensorboard_callback, stopping_callback]
     #callbacks = [tensorboard_callback, stopping_callback]
 
-    fit = model.fit(train[0], train[1], epochs = epochs, batch_size= args.batch, validation_split=( args.__TEST_RATIO__), callbacks=callbacks)
+    batch = args.batch
+
+    if args.steps_per_epoch > 0:
+        X, Y = sample_from ( train, args.steps_per_epoch * batch )
+    else:
+        X, Y = train[0], train[1]
+        
+    fit = model.fit(X, Y, epochs = epochs, batch_size= batch, validation_split=( args.__TEST_RATIO__), callbacks=callbacks)
 
     #model.save(model_output_path + model.name + '.tf', save_format="tf")
     if save_model:
@@ -251,10 +260,21 @@ def load_np_data(path, chop_time = True, max_size = -1, visualize = False):
         x_shape = [-1, 64, 6]
     y_shape = [-1, 1]
 
-    x_train = load_from_npy(path + "x_train.npy", x_shape, max_size)
-    y_train = load_from_npy(path + "y_train.npy", y_shape, max_size)
+    x_train = load_from_npy(path + "x_train.npy", x_shape)
+    y_train = load_from_npy(path + "y_train.npy", y_shape)
+    affine_train = load_from_npy(path + "affine_train.npy", x_shape)
 
-    affine_train = load_from_npy(path + "affine_train.npy", x_shape, max_size)
+    if max_size > 0:
+        print
+        print "Originally loaded x_train.shape %s " % str(x_train.shape)
+        sample_indices = np.random.choice(x_train.shape[0], max_size, replace=True)
+        x_train = x_train[sample_indices]
+        y_train = y_train[sample_indices]
+        print "Random sampled into x_train.shape %s " % str(x_train.shape)
+
+        sample_indices = np.random.choice(affine_train.shape[0], max_size, replace=True)
+        affine_train = affine_train[sample_indices]
+        gc.collect()
 
     print
     print "Loaded data x.shape: %r, y.mean: %r" % ( x_train.shape, y_train.mean())
@@ -262,10 +282,19 @@ def load_np_data(path, chop_time = True, max_size = -1, visualize = False):
     print
     print
 
-    x_test = load_from_npy(path + "x_test.npy", x_shape, max_size/10)
-    y_test = load_from_npy(path + "y_test.npy", y_shape, max_size/10)
+    max_size = max_size/10
+    x_test = load_from_npy(path + "x_test.npy", x_shape)
+    y_test = load_from_npy(path + "y_test.npy", y_shape)
+    affine_test = load_from_npy(path + "affine_test.npy", x_shape)
 
-    affine_test = load_from_npy(path + "affine_test.npy", x_shape, max_size/10)
+    if max_size > 0:
+        sample_indices = np.random.choice(x_test.shape[0], max_size, replace=True)
+        x_test = x_test[sample_indices]
+        y_test = y_test[sample_indices]
+
+        sample_indices = np.random.choice(affine_test.shape[0], max_size, replace=True)
+        affine_test = affine_test[sample_indices]
+        gc.collect()
 
     print "x_test.shape"
     print x_test.shape
@@ -406,7 +435,7 @@ def HW_decoder(input_shape):
     model = keras.Model(inputs=seed, outputs=exit , name= __NAME__)
 
     model.compile(optimizer = 'adam',
-                  loss = 'MSE',
+                  loss = 'MAE',
                   )
 
     print model.summary()
@@ -472,7 +501,7 @@ def recompile(model):
         
     model.compile(optimizer = 'adam',
                        loss = {
-                           exit.name : 'MSE',
+                           exit.name : 'MAE',
                        },
                        loss_weights = {
                            exit.name : 1
@@ -503,7 +532,7 @@ def load_model_pack(path, model_name, trainable = False, entry = "entry", exit =
         model.trainable = trainable
 
     model.compile(optimizer='adam',
-                  loss='MSE',
+                  loss='MAE',
     )
 
     print "Loaded model %s" % model.name
@@ -578,8 +607,10 @@ def predict_scripts(model, seeds):
 
 def sample_from(data, size):
     max_size = data[0].shape[0]
-    sample_x = data[0][np.random.choice(max_size, size)]
-    sample_y = data[1][np.random.choice(max_size, size)]
+
+    sampled_indices = np.random.choice(max_size, size)
+    sample_x = data[0][sampled_indices]
+    sample_y = data[1][sampled_indices]
     sample = [sample_x, sample_y]
     return sample
 
@@ -647,12 +678,10 @@ def run_iteration(gene_model, affine_train, affine_test, iteration = 0, size = 1
     return gene_model
 
 def main():
-    size = args.max_size
-
     print "************ Running Experiement Iteration %d, re_train == %r ************\n\n\n" % (args.itera, args.re_train)
     
     print "\n\n-------- loading train/test dataset  ----------\n\n"
-    test, train, affine_test, affine_train = load_np_data(args.output_dir, max_size = size, visualize = False)
+    test, train, affine_test, affine_train = load_np_data(args.output_dir, max_size = args.max_size, visualize = False)
     print "\ttrain size %d, affine_train size %d" % (train[0].shape[0], affine_train[0].shape[0])
 
     if args.re_train:
@@ -660,7 +689,7 @@ def main():
         gene_model = load_model_pack(args.output_dir + args.__GENE_FOLDER__, args.__GENE_MODEL_NAME__, trainable = None)[2]
 
         print "\n\n-------- continue training generator  ----------\n\n"
-        gene_model = run_iteration(gene_model = gene_model, affine_train = affine_train, affine_test = affine_test, iteration = args.itera, path = args.output_dir + args.__GENE_FOLDER__, size = size )
+        gene_model = run_iteration(gene_model = gene_model, affine_train = affine_train, affine_test = affine_test, iteration = args.itera, path = args.output_dir + args.__GENE_FOLDER__, size = args.max_size )
 
     else:
         print "\n\n-------- create_and_fit_discriminator  ----------\n\n"

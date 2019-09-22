@@ -8,7 +8,7 @@ if mini == True:
     __MUTATE_MULTIPLIER__ = 10
     __MUTATE_LENGTH__ = 10
 else:
-    __AFFINE_MULTIPLIER__ = 50000
+    __AFFINE_MULTIPLIER__ = 1000
     __MUTATE_MULTIPLIER__ = 1
     __MUTATE_LENGTH__ = 4
 
@@ -60,13 +60,11 @@ def save_to_npy(data, name):
     print data.shape
     np.save(name, data)
 
-def load_from_npy(name, shape, max_size):
-    print "loading to file " + name
+def load_from_npy(name, shape):
+    print "loading from file " + name
     data = np.load(name).astype('float32')
     if shape:
         data = data.reshape(shape)
-    if max_size:
-        data = data[:max_size]
     return data
 
 def add_time_axis(script):
@@ -194,10 +192,10 @@ def load_task_file_under_path(path, n = -1):
 
 MAX_TIME = 32
 affine = {
-    'x': [-0.1, 0.1], 
-    'y': [-0.1, 0.1], 
-    'z': [-0.05, 0.1], #z
-    't': [-20,20],    #theta
+    'x': [-0.2, 0.2], 
+    'y': [-0.2, 0.2], 
+    'z': [-0.1, 0.2], #z
+    't': [-30,30],    #theta
     's': [0, 3.0]     #start
 }
 
