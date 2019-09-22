@@ -76,7 +76,7 @@ def add_time_axis(script):
     script = np.concatenate([time_series, script] , axis = 1)
     return script
 
-def visualize_script(script, filename = None, dist = None, dequant = True):
+def visualize_script(script, filename = None, dist = None, dequant = True, write_traj = False):
     script = np.copy(script)
 
     if (script.shape == (64,6)):
@@ -84,6 +84,9 @@ def visualize_script(script, filename = None, dist = None, dequant = True):
 
     if dequant:
         script = dequantize(script, fixed_range, start = 1)
+
+    if write_traj:
+        write_script_to_traj(dist, script, filename + '.traj')
 
     duration = script[-1][0]
     #t = np.array([(1 - t/duration, 0, t/duration) for t in script[:,0]])
@@ -102,13 +105,13 @@ def visualize_script(script, filename = None, dist = None, dequant = True):
 
     fig = plt.figure()
 
-    title = 'Trajectory Visualization'
+    title = 'Trajectory'
     if type(dist) == np.ndarray:
-        title +=  ' (Score: %2.4f)' % dist[0]
+        title += ' -- (Score: %2.4f)' % dist[0]
     elif type(dist) == str:
-        title +=  ' ' + dist
+        title += ' -- ' + dist
     else:
-        title += ' (Score: %r)' % dist
+        title += ' -- (Score: %r)' % dist
     fig.suptitle(title)
 
     manager = plt.get_current_fig_manager()
@@ -134,21 +137,21 @@ def visualize_script(script, filename = None, dist = None, dequant = True):
 
     #cbar = fig.colorbar(img)
     if filename:
-        plt.savefig(filename, dpi=600)
+        plt.savefig(filename + '.png', dpi=600)
     else:
         plt.show()
     plt.close()
 
     return None
 
-def write_script_to_file(dist, script, fname):
+def write_script_to_traj(dist, script, fname):
     with open(fname,'w') as sfile:
         string = "# " + str(dist) + "\n"
         sfile.write(string)
         for line in script:
             string = " ".join([str(num) for num in line]) + "\n"
             sfile.write(string)
-        print "writhing to %s : %d lines dist = %f" % (fname,len(script), dist)
+        #print "writhing to %s : %d lines dist = %r" % (fname,len(script), dist)
     return
     
 
@@ -303,7 +306,7 @@ def mutate_script(scri):
     #visualize_script(scri, dequant = False)
     return dist, scri
 
-def dump_np_array(names, dists, scripts, path, output_suffix, plot_samples = None, output_traj_files = False):
+def dump_np_array(names, dists, scripts, output_path, output_suffix, plot_samples = None, output_traj_files = False):
 
     cnt = 0
     arr_traj = []
@@ -324,7 +327,7 @@ def dump_np_array(names, dists, scripts, path, output_suffix, plot_samples = Non
             #visualize_script(scri)
             dist = 0
             if output_traj_files:
-                write_script_to_file(dist, scri, output_path + "/fake_" + str(cnt) + "_affine.traj")
+                write_script_to_traj(dist, scri, output_path + "/fake_" + str(cnt) + "_affine.traj")
                 cnt += 1
 
             arr_traj.append(np.copy(scri))
@@ -340,7 +343,7 @@ def dump_np_array(names, dists, scripts, path, output_suffix, plot_samples = Non
                 dist_mut += delta_dist
 
                 if output_traj_files:
-                    write_script_to_file(dist, scri_mut, output_path + "/fake_" + str(cnt) + "_mutate.traj")
+                    write_script_to_traj(dist, scri_mut, output_path + "/fake_" + str(cnt) + "_mutate.traj")
                     cnt += 1
 
                 # now disc predict binary
@@ -355,13 +358,13 @@ def dump_np_array(names, dists, scripts, path, output_suffix, plot_samples = Non
 
     arr_traj = quantize(arr_traj, fixed_range, start = 1)
 
-    save_to_npy(arr_traj, path + "x_" + output_suffix)
-    save_to_npy(arr_dist, path + "y_" + output_suffix)
+    save_to_npy(arr_traj, output_path + "x_" + output_suffix)
+    save_to_npy(arr_dist, output_path + "y_" + output_suffix)
     
 
     affine_arr_traj = np.array(affine_arr_traj)
     affine_arr_traj = quantize(affine_arr_traj, fixed_range, start = 1)
-    save_to_npy(affine_arr_traj, path + "affine_" + output_suffix)
+    save_to_npy(affine_arr_traj, output_path + "affine_" + output_suffix)
 
 
     #after saved
@@ -393,8 +396,8 @@ def dump_np_array(names, dists, scripts, path, output_suffix, plot_samples = Non
     print "max:"
     print arr_traj.max(axis = 0).max(axis = 0)
 
-def create_fake_trajs():
-    names, dists, scripts = load_task_file_under_path(path);
+def create_fake_trajs(input_path, output_path):
+    names, dists, scripts = load_task_file_under_path(input_path);
 
     test = 2
     dump_np_array(names[:2], dists[:2], scripts[:2], output_path, output_suffix = "test.npy", plot_samples = "test_data")
@@ -402,7 +405,7 @@ def create_fake_trajs():
 
 
 def main():
-    create_fake_trajs()
+    create_fake_trajs(args.input_dir, args.output_dir)
 
     #visualize_trajs(output_path)
 

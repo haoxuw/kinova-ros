@@ -22,9 +22,42 @@ def HW_Disc_Dense(input_shape):
     __NAME_PREFIX__ = __NAME__ + "_"
  
     activation = 'relu'
-    #activation = 'tanh'
+    activation = 'tanh'
 
-    dense_shape = np.array([12,512,1024,128,8])
+    dense_shape = np.array([12,32,128,128,256,128,128,32,16,4])
+    #dense_shape = np.array([12,256,1024,512]) v1
+
+    __FILTER_SIZE__ = 3
+    
+
+    def add_disc_repetition_v1(x, ori_x, filters, j):
+        x = keras.layers.Flatten(name = __NAME_PREFIX__ + "flatten_%d" % (j))(x)
+        x = keras.layers.Dense(filters, activation=activation, name = __NAME_PREFIX__ + "dense_" + str(j) )(x)
+
+        return x
+
+    def add_disc_repetition_v2(x, ori_x, filters, j):
+        filter_size = __FILTER_SIZE__
+        factor = 2
+
+        x1 = keras.layers.Conv1D(filters, filter_size, activation=activation, padding = 'same', name = __NAME_PREFIX__+ 'cv1_1_%d_x_%d' %(filters, j) )(x)
+
+        input_x_size = x.shape[1]
+
+        ori_x = keras.layers.Flatten(name = __NAME_PREFIX__ + "flatten_%d" % (j))(ori_x)
+        x2 = keras.layers.Dense(filters * input_x_size * factor, activation=activation, name = __NAME_PREFIX__ + "dense_21_" + str(j) )(ori_x)
+        x2 = keras.layers.Dense(filters * input_x_size, activation=activation, name = __NAME_PREFIX__ + "dense_22_" + str(j) )(x2)
+        x2 = keras.layers.Reshape([input_x_size, filters])(x2)
+
+        x3 = keras.layers.Dense(filters, activation=activation, name = __NAME_PREFIX__ + "dense_3_" + str(j) )(x)
+
+        x = keras.layers.Add(name = __NAME_PREFIX__+ 'add_num_%d' % (j))([x1, x2, x3])
+
+        if (j % 2 == 0):
+            x = keras.layers.MaxPooling1D(name = __NAME_PREFIX__+ 'maxpool_num_%d' % (j), pool_size = 2)(x)
+
+        return x
+
 
     entry = keras.layers.Input(shape=input_shape[1:], name = __NAME_PREFIX__ + "entry")
 
@@ -36,11 +69,14 @@ def HW_Disc_Dense(input_shape):
 
     x = keras.layers.Concatenate(name = __NAME_PREFIX__+ 'concat_v', axis = 2)([v,v2])
 
-    x = keras.layers.Flatten(name = __NAME_PREFIX__ + "flatten")(x)
+    
+    ori_x = x
 
     for j in range(len(dense_shape)):
         filters = dense_shape[j]
-        x = keras.layers.Dense(filters, activation=activation, name = __NAME_PREFIX__ + "dense_" + str(j) )(x)
+        x = add_disc_repetition_v2(x, ori_x, filters, j)
+
+    x = keras.layers.Flatten(name = __NAME_PREFIX__ + "flatten")(x)
 
     x = keras.layers.Dense(1, activation='linear', name = __NAME_PREFIX__ + "shift" )(x)
 
@@ -169,14 +205,6 @@ class EarlyStoppingByLossVal(keras.callbacks.Callback):
 def fit_and_save_model(model, train, test, model_output_path, save_model = True, epochs = 1, visualize = True):
     print " -- training model -- "
 
-    random_vis = 0#10
-    for i in range(random_vis):
-        index = np.random.randint(train[0].shape[0])
-        visualize_script(train[0][index], dist = train[1][index])
-
-
-
-
     checkpoint = model_output_path + model.name + "_cp.hdf5"
 
     # Create a callback that saves the model's weights
@@ -238,6 +266,14 @@ def load_np_data(path, chop_time = True, max_size = -1, visualize = False):
     y_test = load_from_npy(path + "y_test.npy", y_shape, max_size/10)
 
     affine_test = load_from_npy(path + "affine_test.npy", x_shape, max_size/10)
+
+    print "x_test.shape"
+    print x_test.shape
+    print "[:,0,:] point range:"
+    print "min:"
+    print x_test[:,0,:].min(axis = 0)
+    print "max:"
+    print x_test[:,0,:].max(axis = 0)
 
     if visualize:
         for i in range(0, len(x_train), len(x_train)/7):
@@ -326,6 +362,7 @@ def HW_decoder(input_shape):
     stride = 1
     padding = 0
     activation = 'relu'
+    activation = 'tanh'
 
     seed_trans_num = __SEED_TRANS_NUM__
 
@@ -562,26 +599,29 @@ def merge_data(data1, data2, size = 10000, ratio = 0.5):
     ]
     return sample
 
-def save_sample_figures(data, save_path, size = 10, prefix = "sample_fig", max_fig_size = 20):
+def save_sample_figures(scripts, save_path, prefix = "sample_fig", size = 50):
+    max_size = 100;
     if save_path is not None:
         path = args.output_dir + "/" + save_path
         os.system('mkdir -p ' + path)
 
-        total_size = data[0].shape[0]
-        for pred_index in range(0, total_size, total_size / size):
-            script = data[0][pred_index]
-            dist = data[1][pred_index]
-            pred_script = np.copy(script).reshape([64,6])
-            max_fig_size -= 1
-            if (max_fig_size < 1):
-                break
+        total_size = scripts.shape[0]
+        for sample_index in range(0, total_size, (total_size / size + 1)):
+            script = scripts[sample_index]
+            sample_script = np.copy(script).reshape([64,6])
 
-            visualize_script(pred_script, filename = path + "/" + prefix + "_fig_" + str(pred_index) + ".png", dist = dist)
+            description = ("#%02d" % sample_index) + "_" + prefix
+            filename = path + "/" + description
+            visualize_script(sample_script, filename = filename, dist = description, dequant = True, write_traj = True)
+
+            max_size -= 1
+            if max_size == 0:
+                break
 
 def load_generator_cp_pack():
     return load_model_pack(args.output_dir + args.__GENE_FOLDER__, args.__GENE_MODEL_NAME__, trainable = None)
 
-def run_iteration(gene_model, affine_data, iteration = 0, size = 10000, path = args.__GENE_FOLDER__, save_samples = args.__FIG_FOLDER__):
+def run_iteration(gene_model, affine_train, affine_test, iteration = 0, size = 10000, path = args.__GENE_FOLDER__, save_samples_path = args.__FIG_FOLDER__):
     print "\n\n-------- Running Iteration %d  ----------\n\n" % iteration
     #need to load model every iteration to workaround what seems to be a tensorflow mem leak
 
@@ -589,15 +629,20 @@ def run_iteration(gene_model, affine_data, iteration = 0, size = 10000, path = a
     if iteration == 0:
         print gene_model.summary()
 
-    gene_model, gen_predicted_data = fit_generator_decoder(gene_model = gene_model, demo_data = affine_data, path = path, size = size)
+        prefix = "Demonstration"
+        save_sample_figures(affine_test, save_samples_path, prefix)
 
-    prefix = "posdeco_iter_" + str(iteration)
-    save_sample_figures(gen_predicted_data, save_samples, size, prefix)
+    gene_model, gen_predicted_data = fit_generator_decoder(gene_model = gene_model, demo_data = affine_train, path = path, size = size)
 
-    gene_model, gen_predicted_data = fit_generator_discriminator(gene_model = gene_model, demo_data = affine_data, gen_predicted_data = gen_predicted_data, path = path, size = size)
+    prefix = "Predicted_In_Iteration_" + str(iteration)
 
-    prefix = "posdisc_iter_" + str(iteration)
-    save_sample_figures(gen_predicted_data, save_samples, size, prefix)
+    test_seeds = affine_test[:,:1,:]
+    gen_predicted_test_data = predict_scripts(gene_model, test_seeds)
+    save_sample_figures(gen_predicted_test_data[0], save_samples_path, prefix)
+
+    gene_model, gen_predicted_data = fit_generator_discriminator(gene_model = gene_model, demo_data = affine_train, gen_predicted_data = gen_predicted_data, path = path, size = size)
+
+    #prefix = "posdisc_iter_" + str(iteration)
 
     return gene_model
 
@@ -615,7 +660,7 @@ def main():
         gene_model = load_model_pack(args.output_dir + args.__GENE_FOLDER__, args.__GENE_MODEL_NAME__, trainable = None)[2]
 
         print "\n\n-------- continue training generator  ----------\n\n"
-        gene_model = run_iteration(gene_model = gene_model, affine_data = affine_train, iteration = args.itera, path = args.output_dir + args.__GENE_FOLDER__, size = size )
+        gene_model = run_iteration(gene_model = gene_model, affine_train = affine_train, affine_test = affine_test, iteration = args.itera, path = args.output_dir + args.__GENE_FOLDER__, size = size )
 
     else:
         print "\n\n-------- create_and_fit_discriminator  ----------\n\n"
