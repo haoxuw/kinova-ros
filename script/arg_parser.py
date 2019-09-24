@@ -7,7 +7,7 @@ def argumentParser():
     parser.add_argument('--input_dir', type=str, default= input_dir, help='')
     parser.add_argument('--output_dir', type=str, default= output_dir, help='Path to output directory. Might overwrite.')
     parser.add_argument('--epochs', type=int, default=64, help='')
-    parser.add_argument('--batch', type=int, default=16, help='')
+    parser.add_argument('--batch', type=int, default=64, help='')
     parser.add_argument('--steps_per_epoch', type=int, default=1024, help='')
 
     parser.add_argument('--max_size', type=int, default=-1, help='')
@@ -15,6 +15,9 @@ def argumentParser():
     parser.add_argument('--itera', type=int, default=0, help='')
     parser.add_argument('--re_train', action="store_true")
     parser.add_argument('--view', action="store_true")
+
+    parser.add_argument('--sive_fig_num', type=int, default=11, help='')
+    
 
     args = parser.parse_args()
 

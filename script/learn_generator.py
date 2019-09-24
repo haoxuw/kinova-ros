@@ -1,6 +1,5 @@
 import gc
 
-from learn_discriminator import *
 from process_scripts import *
 
 import sys, datetime
@@ -12,7 +11,8 @@ from arg_parser import *
 
 
 
-
+#adam = keras.optimizers.Adam(learning_rate=0.0001, beta_1=0.999, beta_2=0.9999, amsgrad=False)
+adam = keras.optimizers.Adam(learning_rate=0.001, beta_1=0.99, beta_2=0.999, amsgrad=False)
 
 
 
@@ -39,6 +39,23 @@ def HW_Disc_Dense(input_shape):
         return x
 
     def add_disc_repetition_v2(x, ori_x, filters, j):
+        filter_size = __FILTER_SIZE__
+        factor = 2
+
+        x1 = keras.layers.Conv1D(filters, filter_size, activation=activation, padding = 'same', name = __NAME_PREFIX__+ 'cv1_1_%d_x_%d' %(filters, j) )(x)
+
+        input_x_size = x.shape[1]
+
+        x3 = keras.layers.Dense(filters, activation=activation, name = __NAME_PREFIX__ + "dense_3_" + str(j) )(x)
+
+        x = keras.layers.Add(name = __NAME_PREFIX__+ 'add_num_%d' % (j))([x1, x3])
+
+        if (j % 2 == 0):
+            x = keras.layers.MaxPooling1D(name = __NAME_PREFIX__+ 'maxpool_num_%d' % (j), pool_size = 2)(x)
+
+        return x
+
+    def add_disc_repetition_v3(x, ori_x, filters, j):
         filter_size = __FILTER_SIZE__
         factor = 2
 
@@ -140,11 +157,7 @@ def HW_Disc_Conv1D(input_shape):
     v1 = keras.layers.Cropping1D(cropping=([1, 0]), name = __NAME_PREFIX__ + "cropping_v1" )(x)
     v2 = keras.layers.Cropping1D(cropping=([0, 1]), name = __NAME_PREFIX__ + "cropping_v2" )(x)
     v = keras.layers.Subtract(name = __NAME_PREFIX__+ 'sub_v')([v2,v1])
-    print x
-    print v
-    print v2
     x = keras.layers.Concatenate(name = __NAME_PREFIX__+ 'concat_v', axis = 2)([v,v2])
-    print x
 
     for j in range(len(conv_shape)):
         filters = conv_shape[j]
@@ -179,9 +192,11 @@ def HW_Disc_Conv1D(input_shape):
 def create_discriminator(input_shape):
     #model = HW_Disc_Conv1D(input_shape)
     model = HW_Disc_Dense(input_shape)
-    model.compile(optimizer='adam',
-                  loss='MAE',
-                  metrics=['MAE']
+
+    
+    model.compile(optimizer=adam,
+                  loss='MSE',
+                  metrics=['MSE']
     )
     model.build(input_shape)
     return model
@@ -204,8 +219,8 @@ class EarlyStoppingByLossVal(keras.callbacks.Callback):
                 print "\n\nEpoch %05d: early stopping THR" % epoch
             self.model.stop_training = True
 
-def fit_and_save_model(model, train, test, model_output_path, save_model = True, epochs = 1, visualize = True):
-    print " -- training model -- "
+def fit_and_save_model(model, train, test, model_output_path, save_model = True, epochs = 1, visualize_train = False, visualize_pred = False):
+    print " -- training model %r -- " % model.name
 
     checkpoint = model_output_path + model.name + "_cp.hdf5"
 
@@ -222,37 +237,49 @@ def fit_and_save_model(model, train, test, model_output_path, save_model = True,
 
     batch = args.batch
 
-    if args.steps_per_epoch > 0:
-        X, Y = sample_from ( train, args.steps_per_epoch * batch )
-    else:
-        X, Y = train[0], train[1]
-        
-    fit = model.fit(X, Y, epochs = epochs, batch_size= batch, validation_split=( args.__TEST_RATIO__), callbacks=callbacks)
+    X, Y = train
 
-    #model.save(model_output_path + model.name + '.tf', save_format="tf")
+    if visualize_train:
+        for i in range(0, len(X), len(X)/37 + 1):
+            x = X[i]
+            y = Y[i]
+            visualize_script(x, dist = y)
+
+    fit = model.fit(X, Y, epochs = epochs, batch_size= batch, shuffle=True, validation_split=( args.__TEST_RATIO__), callbacks=callbacks)
+
     if save_model:
         model.save(model_output_path + model.name + '.h5')
 
+    #model.save(model_output_path + model.name + '.tf', save_format="tf")
     if test:
-        model.evaluate(*test)
+        model.evaluate(test[0], test[1])
 
-        if visualize:
-            answer = model.predict(test[0])
-            for index in range(15):#range(test[0].shape[0]):
-                print "%d As %r" % (index, answer[index])
-                print "%d Vs %r" % (index, test[1][index])
+    if visualize_pred:
+        answer = model.predict(X)
+        print "visualizing prediction"
+        for cnt in range(35):#range(test[0].shape[0]):
+            index = np.random.randint(X.shape[0])
+            visualize_script(X[index], dist = "pred: %r" % answer[index][0])
+        
+        return model
+        answer = model.predict(X)
+        script = answer[1] # [loss, script]
+        for cnt in range(15):#range(test[0].shape[0]):
+            index = np.random.randint(X.shape[0])
+            print "%d As %r" % (index, script[index])
+            print "%d Vs %r" % (index, Y[index])
 
-                print answer[index].shape
-                visualize_script(test[0][index], dist = 'test')
-                visualize_script(answer[index], dist = 'pred')
-                filename = model_output_path + '/fit_pred_sample_%d.png' % index
-                visualize_script(answer[index], dist = 'pred', filename = filename)
-                filename = model_output_path + '/fit_test_sample_%d.png' % index
-                visualize_script(test[0][index], dist = 'test', filename = filename)
+            #visualize_script(X[index], dist = 'train')
+            visualize_script(script[index], dist = 'pred')
+
+            #filename = model_output_path + '/fit_train_sample_%d.png' % index
+            #visualize_script(X[index], dist = 'train', filename = filename)
+            filename = model_output_path + '/fit_pred_sample_%d.png' % index
+            visualize_script(script[index], dist = 'pred', filename = filename)
 
     return model
 
-def load_np_data(path, chop_time = True, max_size = -1, visualize = False):
+def load_np_data(path, chop_time = True, max_size = -1, visualize = False, max_test = True, shuffle = False):
 
     if chop_time:
         x_shape = [-1, 64, 7]
@@ -264,37 +291,58 @@ def load_np_data(path, chop_time = True, max_size = -1, visualize = False):
     y_train = load_from_npy(path + "y_train.npy", y_shape)
     affine_train = load_from_npy(path + "affine_train.npy", x_shape)
 
-    if max_size > 0:
-        print
-        print "Originally loaded x_train.shape %s " % str(x_train.shape)
-        sample_indices = np.random.choice(x_train.shape[0], max_size, replace=True)
-        x_train = x_train[sample_indices]
-        y_train = y_train[sample_indices]
-        print "Random sampled into x_train.shape %s " % str(x_train.shape)
-
-        sample_indices = np.random.choice(affine_train.shape[0], max_size, replace=True)
-        affine_train = affine_train[sample_indices]
-        gc.collect()
-
-    print
-    print "Loaded data x.shape: %r, y.mean: %r" % ( x_train.shape, y_train.mean())
-    print
-    print
-    print
-
-    max_size = max_size/10
     x_test = load_from_npy(path + "x_test.npy", x_shape)
     y_test = load_from_npy(path + "y_test.npy", y_shape)
     affine_test = load_from_npy(path + "affine_test.npy", x_shape)
 
-    if max_size > 0:
-        sample_indices = np.random.choice(x_test.shape[0], max_size, replace=True)
+    if shuffle:
+        sample_indices = np.random.choice(x_train.shape[0], x_train.shape[0], replace=False)
+        x_train = x_train[sample_indices]
+        y_train = y_train[sample_indices]
+
+        sample_indices = np.random.choice(affine_train.shape[0], affine_train.shape[0], replace=False)
+        affine_train = affine_train[sample_indices]
+
+        sample_indices = np.random.choice(x_test.shape[0], x_test.shape[0], replace=False)
         x_test = x_test[sample_indices]
         y_test = y_test[sample_indices]
 
-        sample_indices = np.random.choice(affine_test.shape[0], max_size, replace=True)
+        sample_indices = np.random.choice(affine_test.shape[0], affine_test.shape[0], replace=False)
         affine_test = affine_test[sample_indices]
-        gc.collect()
+
+    if max_size > 0:
+        x_train = x_train[:max_size]
+        y_train = y_train[:max_size]
+        affine_train = affine_train[:max_size]
+        if not max_test:
+            max_size = max_size/10
+            x_test = x_test[:max_size]
+            y_test = y_test[:max_size]
+            affine_test = affine_test[:max_size]
+        else:
+            max_size = affine_test.shape[0]
+            x_test = x_test[:max_size]
+            y_test = y_test[:max_size]
+
+            step = max_size / 41
+            x_test = x_test[0::step]
+            y_test = y_test[0::step]
+            affine_test = affine_test[0::step]
+    gc.collect()
+
+    print
+    print
+
+    print
+    print "Loaded data x.shape: %r, y.mean: %r" % ( x_train.shape, y_train.mean())
+    print
+    print "x_train.shape"
+    print x_train.shape
+    print "[:,0,:] point range:"
+    print "min:"
+    print x_train[:,0,:].min(axis = 0)
+    print "max:"
+    print x_train[:,0,:].max(axis = 0)
 
     print "x_test.shape"
     print x_test.shape
@@ -332,7 +380,8 @@ def create_and_fit_discriminator(train, test, path):
     #test_ds = tf.data.Dataset.from_tensor_slices(test).batch(__BATCH__)
 
     model = create_discriminator(train[0].shape)
-    fit_and_save_model(model, train, test, path, epochs = args.epochs, visualize = False)
+    fit_and_save_model(model, train, test, path, epochs = args.epochs, visualize_train = False)
+    return model
 
 
 def HW_decoder(input_shape):
@@ -413,7 +462,7 @@ def HW_decoder(input_shape):
     for i in range(seed_trans_num):
         x = keras.layers.Dense(6, activation=activation, name = __NAME_PREFIX__ + "dense_start_num_%d" %(i) )(x)
 
-    x = keras.layers.Conv2DTranspose(6, (last_layer_x, 1), activation=activation, name = __NAME_PREFIX__+ 'deconv_first' )(x)
+    x = keras.layers.Conv2DTranspose(6, (last_layer_x, 1), activation='sigmoid', name = __NAME_PREFIX__+ 'deconv_first' )(x)
 
     transeconv_shape = range(last_index)
     transeconv_shape.reverse()
@@ -433,10 +482,6 @@ def HW_decoder(input_shape):
     exit = x
 
     model = keras.Model(inputs=seed, outputs=exit , name= __NAME__)
-
-    model.compile(optimizer = 'adam',
-                  loss = 'MAE',
-                  )
 
     print model.summary()
 
@@ -485,10 +530,10 @@ def find_entry_exit(model, entry = "entry", exit = "exit"):
 
 def config_generator(gene_model, deco_trainable, disc_trainable):
     for layer in gene_model.layers:
-        if args.__DECO_MODEL_NAME__ == layer.name:
+        if args.__DECO_MODEL_NAME__ in layer.name:
             print "-------- configure %s : %r  ----------" % (layer.name, deco_trainable)
             layer.trainable = deco_trainable
-        elif args.__DISC_MODEL_NAME__ == layer.name:
+        elif args.__DISC_MODEL_NAME__ in layer.name:
             print "-------- configure %s : %r  ----------\n\n" % (layer.name, disc_trainable)
             layer.trainable = disc_trainable
     gene_model = recompile(gene_model)
@@ -500,12 +545,12 @@ def recompile(model):
     entry, exit, model = find_entry_exit(model)
         
     model.compile(optimizer = 'adam',
-                       loss = {
-                           exit.name : 'MAE',
-                       },
-                       loss_weights = {
-                           exit.name : 1
-                       })
+                  loss = {
+                      exit.name : 'MSE',
+                  },
+                  loss_weights = {
+                      exit.name : 1
+                  })
 
     print model.summary()
 
@@ -513,26 +558,51 @@ def recompile(model):
 
 def create_generator(decoder_pack, discriminator_pack):
     print "\n\n-------- create generator  ----------\n\n"
-    
+
     gene_model = HW_Gene_Minimal_GAN(decoder_pack = decoder_pack, discriminator_pack = discriminator_pack)
     gene_model = recompile (gene_model)
-
-    config_generator (gene_model, deco_trainable = False, disc_trainable = False)
-    mini_size = 3
-    affine_data = [ np.zeros(mini_size * 6).reshape(mini_size, 1, 6), np.zeros(mini_size).reshape(-1, 1) ]
-    gene_model = fit_and_save_model(gene_model, train = affine_data, test = None, model_output_path = args.output_dir + args.__GENE_FOLDER__, epochs = args.epochs, visualize = False)
 
     return gene_model
 
 
-def load_model_pack(path, model_name, trainable = False, entry = "entry", exit = "exit"):
+def extract_model_from_generator(model_name, new_model_name):
+    entry, exit, gene_model = load_model_pack (path = args.output_dir + args.__GENE_FOLDER__, model_name = args.__GENE_MODEL_NAME__, trainable = True)
+
+    submodel = None
+    for layer in gene_model.layers:
+        if model_name == layer.name:
+            submodel = layer
+
+    if submodel is None:
+        return None
+
+    entry = keras.layers.Input(shape=(64,6), name = new_model_name + "_entry")
+
+    x = entry
+
+    exit = submodel(x)
+
+    sub_model = keras.Model(inputs=entry, outputs=exit , name= new_model_name)
+
+    sub_model.compile(optimizer='adam',
+                  loss='MSE',
+    )
+
+    print "\n\n-------- extracted (%r) as:  ----------\n\n" % model_name
+    print sub_model.summary()
+    
+    return [entry, exit, sub_model]
+
+
+
+def load_model_pack(path, model_name, trainable = None, entry = "entry", exit = "exit"):
     model = keras.models.load_model(path + "/" + model_name + ".h5")
     model.load_weights( path + "/" + model_name + "_cp.hdf5" )
     if trainable != None:
         model.trainable = trainable
 
     model.compile(optimizer='adam',
-                  loss='MAE',
+                  loss='MSE',
     )
 
     print "Loaded model %s" % model.name
@@ -553,15 +623,33 @@ def gen_seeds(size = 10000):
 def create_and_fit_decoder(affine_train, affine_test, path):
     deco_model = HW_decoder([None,1,affine_train.shape[-1]])
 
+    deco_model.compile(optimizer = adam,
+                       loss = 'MSE',
+    )
+
     affine_data_train = [affine_train[:,0:1,:], affine_train]
     affine_data_test = [affine_test[:,0:1,:], affine_test]
 
-    fit_and_save_model(deco_model, affine_data_train, affine_data_test, path, epochs = args.epochs, visualize = False)
+    fit_and_save_model(deco_model, affine_data_train, affine_data_test, path, epochs = args.epochs, visualize_train = False)
 
     return deco_model
-
-def fit_generator_decoder(gene_model, demo_data, path, size = 10000):
-    print "\n\n-------- re-train decoder with sampled demo+random seed ----------\n\n"
+        
+def fit_generator_decoder(gene_model, demo_data, path, size = 10000, skip_fit = False):
+    print
+    print
+    print "-----" * 20
+    print "-----" * 20
+    print "-----" * 20
+    print "-----" * 20
+    print "-----" * 20
+    print "-------- re-train generator's decoder with sampled demo+random seed ----------"
+    print "-----" * 20
+    print "-----" * 20
+    print "-----" * 20
+    print "-----" * 20
+    print "-----" * 20
+    print
+    print
 
     seeds = gen_seeds(size)
     losses = np.zeros(size).reshape(-1,1)
@@ -569,33 +657,84 @@ def fit_generator_decoder(gene_model, demo_data, path, size = 10000):
     random_data = [seeds , losses]
     affine_data = [ demo_data[:,0:1,:], np.zeros(demo_data.shape[0]).reshape(-1,1) ]
 
-    sampled_data = merge_data(random_data, affine_data, size, 0.5)
+    sampled_data = merge_data(random_data, affine_data)
 
     config_generator (gene_model, deco_trainable = True, disc_trainable = False)
-    gene_model = fit_and_save_model(gene_model, train = sampled_data, test = None, model_output_path = path, epochs = args.epochs, visualize = False)
+    if not skip_fit:
+        gene_model = fit_and_save_model(gene_model, train = sampled_data, test = None, model_output_path = path, save_model = False, epochs = args.epochs, visualize_train = False, visualize_pred = False)
 
     gen_predicted_data = predict_scripts(gene_model, seeds)
 
     return gene_model, gen_predicted_data
 
-def fit_generator_discriminator(gene_model, demo_data, gen_predicted_data, path, size = 10000):
-    print "\n\n-------- re-train discriminator with sampled demo+gene_predicted seed ----------\n\n"
+def translate_and_merge(affine_train, gen_predicted_data, train_data):
+    __MULTI_FACTOR__ = 4
+    gen_X = gen_predicted_data[0]
+    gen_Y = np.zeros(gen_X.shape[0]).reshape(-1,1)
 
-    gen_predicted_data[0] = gen_predicted_data[0][:,0:1,:]
-    gen_predicted_data[1] += 0.8
+    translation_X = []
+    translation_Y = []
+    for index in range(gen_X.shape[0]):
+        X = np.copy(gen_X[index])
+        translation_X.append(X)
+        translation_Y.append(1.0)
 
-    gen_predicted_data_loss = gen_predicted_data[1]
+        dest = X[0,:]
+        #visualize_script(X)
 
-    affine_data = [ demo_data[:,0:1,:], np.zeros(demo_data.shape[0]).reshape(-1,1) ]
+        for cnt in range(__MULTI_FACTOR__):
+            into_index = np.random.randint(affine_train.shape[0])
 
-    sampled_data = merge_data(affine_data, gen_predicted_data, size = size, ratio = 0.5)
+            X = np.copy(affine_train[into_index])
 
-    config_generator (gene_model, deco_trainable = False, disc_trainable = True)
-    gene_model = fit_and_save_model(gene_model, train = sampled_data, test = None, model_output_path = path, epochs = args.epochs, visualize = False)
+            source = X[0,:]
 
-    gen_predicted_data = predict_scripts(gene_model, gen_predicted_data[0])
+            affine_X = X
+            affine_X -= source
+            affine_X += dest
+            #visualize_script(affine_X)
+    
+            translation_X.append(affine_X)
+            translation_Y.append(0.0)
 
-    return gene_model, gen_predicted_data
+    translation_X = np.array(translation_X)
+    translation_Y = np.array(translation_Y).reshape(-1,1)
+
+    print translation_X.shape
+    print translation_Y.shape
+    print train_data[0].shape
+
+    translation_data = [ translation_X, translation_Y ]
+
+    data = merge_data(train_data, translation_data)
+
+    return data
+
+def retrain_discriminator(affine_train, train_data, gen_predicted_data, test_data, path, size = 10000):
+    print
+    print
+    print "-----" * 20
+    print "-----" * 20
+    print "-----" * 20
+    print "-----" * 20
+    print "-----" * 20
+    print "-------- re-train standalone discriminator with sampled demo+gene_predicted seed ----------"
+    print "-----" * 20
+    print "-----" * 20
+    print "-----" * 20
+    print "-----" * 20
+    print "-----" * 20
+    print 
+
+    print "-------- load_discriminator  ----------"
+    disc_pack = load_model_pack(path = args.output_dir + args.__DISC_FOLDER__, model_name = args.__DISC_MODEL_NAME__, trainable = True, entry = args.__DISC_MODEL_NAME__ + "_entry", exit = args.__DISC_MODEL_NAME__ + "_exit")
+    disc_model = disc_pack[2]
+
+    sampled_data = translate_and_merge(affine_train, gen_predicted_data, train_data)
+
+    disc_model = fit_and_save_model(disc_model, train = sampled_data, test = test_data, model_output_path = path, save_model = True, epochs = args.epochs, visualize_train = False, visualize_pred = False)
+
+    return disc_model
 
 def predict_scripts(model, seeds):
     [losses, scripts] = model.predict(seeds)
@@ -605,32 +744,14 @@ def predict_scripts(model, seeds):
     data = [scripts, losses]
     return data
 
-def sample_from(data, size):
-    max_size = data[0].shape[0]
-
-    sampled_indices = np.random.choice(max_size, size)
-    sample_x = data[0][sampled_indices]
-    sample_y = data[1][sampled_indices]
-    sample = [sample_x, sample_y]
-    return sample
-
-def merge_data(data1, data2, size = 10000, ratio = 0.5):
-    sampled_data1 = sample_from(data1, int(size * ratio))
-    sampled_data2 = sample_from(data2, size - int(size * ratio) )
-
-    if False:
-        print sampled_data1[0].shape
-        print sampled_data2[0].shape
-        print sampled_data1[1].shape
-        print sampled_data2[1].shape
-
+def merge_data(data1, data2):
     sample = [
-        np.concatenate([sampled_data1[0], sampled_data2[0]], axis = 0),
-        np.concatenate([sampled_data1[1], sampled_data2[1]], axis = 0)
+        np.concatenate([data1[0], data2[0]], axis = 0),
+        np.concatenate([data1[1], data2[1]], axis = 0)
     ]
     return sample
 
-def save_sample_figures(scripts, save_path, prefix = "sample_fig", size = 50):
+def save_sample_figures(scripts, save_path, prefix = "sample_fig", size = args.sive_fig_num):
     max_size = 100;
     if save_path is not None:
         path = args.output_dir + "/" + save_path
@@ -649,29 +770,49 @@ def save_sample_figures(scripts, save_path, prefix = "sample_fig", size = 50):
             if max_size == 0:
                 break
 
-def load_generator_cp_pack():
-    return load_model_pack(args.output_dir + args.__GENE_FOLDER__, args.__GENE_MODEL_NAME__, trainable = None)
-
-def run_iteration(gene_model, affine_train, affine_test, iteration = 0, size = 10000, path = args.__GENE_FOLDER__, save_samples_path = args.__FIG_FOLDER__):
+def run_iteration(train_data, test_data, affine_train, affine_test, iteration = 0, size = 10000, path = args.__GENE_FOLDER__, save_samples_path = args.__FIG_FOLDER__):
+    print 
+    print 
+    print 
     print "\n\n-------- Running Iteration %d  ----------\n\n" % iteration
     #need to load model every iteration to workaround what seems to be a tensorflow mem leak
 
-    print "\n\n-------- acquired generator  ----------\n\n"
-    if iteration == 0:
+    new_model_name = args.__DECO_MODEL_NAME__ + "_of_gene"
+    print "\n\n-------- extracting_(%r)_from_generator  ----------\n\n" % new_model_name
+    #deco_pack = extract_model_from_generator(model_name = args.__DECO_MODEL_NAME__, new_model_name = new_model_name)
+    deco_pack = load_model_pack (path = args.output_dir + args.__DECO_FOLDER__, model_name = args.__DECO_MODEL_NAME__, entry = args.__DECO_MODEL_NAME__ + "_entry", exit = args.__DECO_MODEL_NAME__ + "_exit") 
+
+    print deco_pack
+    print deco_pack[2].summary()
+    print deco_pack[2].output
+    #sys.exit()
+    
+    print "\n\n-------- load_discriminator  ----------\n\n"
+    disc_pack = load_model_pack(path = args.output_dir + args.__DISC_FOLDER__, model_name = args.__DISC_MODEL_NAME__, entry = args.__DISC_MODEL_NAME__ + "_entry", exit = args.__DISC_MODEL_NAME__ + "_exit")
+
+    gene_model = create_generator( decoder_pack = deco_pack, discriminator_pack = disc_pack )
+
+    if iteration == 1:
         print gene_model.summary()
 
         prefix = "Demonstration"
-        save_sample_figures(affine_test, save_samples_path, prefix)
+        demo = affine_test
+        demo = affine_train[:1000] #TODO
+        save_sample_figures(demo, save_samples_path, prefix)
 
-    gene_model, gen_predicted_data = fit_generator_decoder(gene_model = gene_model, demo_data = affine_train, path = path, size = size)
+    gene_model, gen_predicted_data = fit_generator_decoder(gene_model = gene_model, demo_data = affine_train, path = path, size = size, skip_fit = False)
 
+    print "\n\n-------- predicting using seeds from affine_test data  ----------\n\n"
     prefix = "Predicted_In_Iteration_" + str(iteration)
+    affine_test_seeds = affine_test[:,:1,:]
+    affine_test_seeds = affine_train[:1000,:1,:] #TODO
+    gen_predicted_affine_test_data = predict_scripts(gene_model, affine_test_seeds)
 
-    test_seeds = affine_test[:,:1,:]
-    gen_predicted_test_data = predict_scripts(gene_model, test_seeds)
-    save_sample_figures(gen_predicted_test_data[0], save_samples_path, prefix)
+    print "\n\n-------- saving samples of prediction to disk  ----------\n\n"
+    save_sample_figures(gen_predicted_affine_test_data[0], save_samples_path, prefix)
 
-    gene_model, gen_predicted_data = fit_generator_discriminator(gene_model = gene_model, demo_data = affine_train, gen_predicted_data = gen_predicted_data, path = path, size = size)
+    #gen_predicted_data != gen_predicted_affine_test_data
+    retrain_discriminator(affine_train = affine_train, train_data = train_data, gen_predicted_data = gen_predicted_data, test_data = test_data, path = args.output_dir + args.__DISC_FOLDER__, size = size)
 
     #prefix = "posdisc_iter_" + str(iteration)
 
@@ -685,11 +826,8 @@ def main():
     print "\ttrain size %d, affine_train size %d" % (train[0].shape[0], affine_train[0].shape[0])
 
     if args.re_train:
-        print "\n\n-------- load_generator  ----------\n\n"
-        gene_model = load_model_pack(args.output_dir + args.__GENE_FOLDER__, args.__GENE_MODEL_NAME__, trainable = None)[2]
-
         print "\n\n-------- continue training generator  ----------\n\n"
-        gene_model = run_iteration(gene_model = gene_model, affine_train = affine_train, affine_test = affine_test, iteration = args.itera, path = args.output_dir + args.__GENE_FOLDER__, size = args.max_size )
+        gene_model = run_iteration(train_data = train, test_data = test, affine_train = affine_train, affine_test = affine_test, iteration = args.itera, path = args.output_dir + args.__GENE_FOLDER__, size = args.max_size )
 
     else:
         print "\n\n-------- create_and_fit_discriminator  ----------\n\n"
@@ -699,13 +837,21 @@ def main():
         create_and_fit_decoder (affine_train = affine_train, affine_test = affine_test, path = args.output_dir + args.__DECO_FOLDER__)
 
         print "\n\n-------- load_decoder  ----------\n\n"
-        decoder_pack = load_model_pack (path = args.output_dir + args.__DECO_FOLDER__, model_name = args.__DECO_MODEL_NAME__, entry = args.__DECO_MODEL_NAME__ + "_entry", exit = args.__DECO_MODEL_NAME__ + "_exit") 
+        deco_pack = load_model_pack (path = args.output_dir + args.__DECO_FOLDER__, model_name = args.__DECO_MODEL_NAME__, entry = args.__DECO_MODEL_NAME__ + "_entry", exit = args.__DECO_MODEL_NAME__ + "_exit") 
 
         print "\n\n-------- load_discriminator  ----------\n\n"
-        discr_pack = load_model_pack(path = args.output_dir + args.__DISC_FOLDER__, model_name = args.__DISC_MODEL_NAME__)
+        disc_pack = load_model_pack(path = args.output_dir + args.__DISC_FOLDER__, model_name = args.__DISC_MODEL_NAME__, entry = args.__DISC_MODEL_NAME__ + "_entry", exit = args.__DISC_MODEL_NAME__ + "_exit")
 
         print "\n\n-------- create_generator  ----------\n\n"
-        gene_model = create_generator( decoder_pack = decoder_pack, discriminator_pack = discr_pack )
+        gene_model = create_generator( decoder_pack = deco_pack, discriminator_pack = disc_pack )
+
+        config_generator (gene_model, deco_trainable = False, disc_trainable = False)
+        # only train a tiny dataset, and save the model
+        mini_size = 3
+        mini_data = [ np.zeros(mini_size * 6).reshape(mini_size, 1, 6), np.zeros(mini_size).reshape(-1, 1) ]
+
+        gene_model = fit_and_save_model(gene_model, train = mini_data, test = None, model_output_path = args.output_dir + args.__GENE_FOLDER__, epochs = 1, visualize_train = False)
+        
 
     return gene_model
     
@@ -713,3 +859,9 @@ if __name__== "__main__":
     args = argumentParser()
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
     main()
+
+
+'''
+config_generator (gene_model, deco_trainable = False, disc_trainable = False)
+
+'''
