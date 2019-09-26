@@ -6,7 +6,7 @@ max_size=100000 #0
 unit_size=1000
 max_iter=1000
 
-epochs=13
+epochs=5
 rm -rf final_results/NN_model*
 
 python learn_generator.py --max_size ${max_size} --itera 0 --epochs ${epochs} --batch 32

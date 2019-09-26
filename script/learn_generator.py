@@ -256,14 +256,31 @@ def fit_and_save_model(model, train, test, model_output_path, save_model = True,
 
     if visualize_pred:
         answer = model.predict(X)
-        print "visualizing prediction"
-        for cnt in range(35):#range(test[0].shape[0]):
-            index = np.random.randint(X.shape[0])
-            visualize_script(X[index], dist = "pred: %r" % answer[index][0])
+
+        print answer.shape
+        if X.shape[1:] == [64,6]:
+            #script = answer[1] # [loss, script]
+            print "visualizing discri prediction"
+            for cnt in range(35):#range(test[0].shape[0]):
+                index = np.random.randint(X.shape[0])
+                visualize_script(X[index], dist = "pred: %r" % answer[index][0])
+        else:
+            print "visualizing deco prediction"
+            script = answer
+            for cnt in range(20):#range(test[0].shape[0]):
+                index = np.random.randint(X.shape[0])
+                filename = model_output_path + '/decoder_pred_sample_%d.png' % cnt
+                visualize_script(script[index], dist = "Decoder Prediction Example %d" % cnt, filename = filename)
+
+                filename = model_output_path + '/decoder_ground_truth_%d.png' % cnt
+                visualize_script(Y[index], dist = "Decoder Ground Truth %d" % cnt, filename = filename)
+
         
         return model
+
+
+
         answer = model.predict(X)
-        script = answer[1] # [loss, script]
         for cnt in range(15):#range(test[0].shape[0]):
             index = np.random.randint(X.shape[0])
             print "%d As %r" % (index, script[index])
@@ -630,7 +647,7 @@ def create_and_fit_decoder(affine_train, affine_test, path):
     affine_data_train = [affine_train[:,0:1,:], affine_train]
     affine_data_test = [affine_test[:,0:1,:], affine_test]
 
-    fit_and_save_model(deco_model, affine_data_train, affine_data_test, path, epochs = args.epochs, visualize_train = False)
+    fit_and_save_model(deco_model, affine_data_train, affine_data_test, path, epochs = args.epochs, visualize_train = False, visualize_pred = False)
 
     return deco_model
         
