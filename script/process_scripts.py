@@ -8,19 +8,19 @@ if mini == True:
     __MUTATE_MULTIPLIER__ = 10
     __MUTATE_LENGTH__ = 10
 else:
-    __AFFINE_MULTIPLIER__ = 1000 #00
+    __AFFINE_MULTIPLIER__ = 10000 #00
     __MUTATE_MULTIPLIER__ = 1
     __MUTATE_LENGTH__ = 4
 
 import math
 
 fixed_range = [
-    [-0.7, 0.4],  #x
-    [-0.8, 0],    #y
-    [0.15, 0.6],  #z
+    [-0.8, 0.5],  #x
+    [-0.9, 0.1],    #y
+    [0.15, 0.5],  #z
     [1.1, 2.8],   #pitch
     [0, 0.1],     #roll
-    [-0.6, 1.6],  #yaw
+    [-0.5, 1.5],  #yaw
 ]
 
 
@@ -60,7 +60,9 @@ def save_to_npy(data, name):
     print data.shape
     np.save(name, data)
 
-def load_from_npy(name, shape):
+def load_from_npy(name, shape = None):
+    if not os.path.exists(name):
+        return None
     print "loading from file " + name
     data = np.load(name).astype('float32')
     if shape:
@@ -192,10 +194,11 @@ def load_task_file_under_path(path, n = -1):
 
 MAX_TIME = 32
 affine = {
-    'x': [-0.1, 0.1], 
-    'y': [-0.1, 0.1], 
-    'z': [-0.05, 0.1], #z
-    't': [-30,30],    #theta
+    'x': [-0.2, 0.2], 
+    'y': [-0.2, 0.2], 
+    'z': [-0.01, 0.01], #z
+    'e': [-1,1],    #eps
+    't': [-20,20],    #theta
     's': [0, 3.0]     #start
 }
 
@@ -247,8 +250,8 @@ def rotate_2d(point,center,angle):
 
     px -= cx
     py -= cy
-    x =   px * math.cos(angle) + py * math.sin(angle)
-    y = - px * math.sin(angle) + py * math.cos(angle)
+    x = px * math.cos(angle) - py * math.sin(angle)
+    y = px * math.sin(angle) + py * math.cos(angle)
     x += cx
     y += cy
     return x,y
@@ -266,6 +269,11 @@ def affine_script(scri):
 
     z = np.random.uniform(*affine['z'])
     scri[:,3] += z
+
+    e = np.random.uniform(*affine['e']) / 180 * math.pi
+    scri[:,4] += e
+
+    scri[:,5] = 0
 
     t = np.random.uniform(*affine['t']) / 180 * math.pi
     for line in scri:
@@ -289,7 +297,7 @@ def mutate_script(scri):
         # accumulative
         for i in range(MUTATION_NUM):
             #ratio = np.random.uniform(-MUTATION_ratio_MAX, MUTATION_ratio_MAX)
-            index = np.random.randint(scri.shape[0])
+            index = np.random.randint(scri.shape[0] - 1 ) + 1
             column = np.random.randint(6)
             if column == 4:
                 continue
@@ -315,7 +323,6 @@ def dump_np_array(names, dists, scripts, output_path, output_suffix, plot_sample
     sample_img_dir = "/sample/"
 
     for index, (name, dist, scri_ori) in enumerate(zip(names, dists, scripts)):
-        print "processing " + name
         for i in range(__AFFINE_MULTIPLIER__):
             scri = np.copy(scri_ori)
             scri = affine_script(scri)
@@ -323,7 +330,7 @@ def dump_np_array(names, dists, scripts, output_path, output_suffix, plot_sample
             #visualize_script(scri, dist = "affine", dequant = False)
             scri = expand_script(scri[:])
             #visualize_script(scri)
-            dist = 0
+            dist = 1
             if output_traj_files:
                 write_script_to_traj(dist, scri, output_path + "/fake_" + str(cnt) + "_affine.traj")
                 cnt += 1
@@ -345,7 +352,7 @@ def dump_np_array(names, dists, scripts, output_path, output_suffix, plot_sample
                     cnt += 1
 
                 # now disc predict binary
-                dist_mut = 1
+                dist_mut = 0
                 arr_traj.append(np.copy(scri_mut))
                 arr_dist.append(np.copy(dist_mut))
                 #visualize_script(scri_mut, dist = dist_mut, dequant = False)

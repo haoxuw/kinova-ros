@@ -8,7 +8,7 @@ from tensorflow import keras
 
 from arg_parser import *
 
-
+from keras import regularizers
 
 
 #adam = keras.optimizers.Adam(learning_rate=0.0001, beta_1=0.999, beta_2=0.9999, amsgrad=False)
@@ -26,7 +26,7 @@ def HW_Disc_Dense(input_shape):
     activation = 'relu'
     activation = 'tanh'
 
-    dense_shape = np.array([12,32,128,128,256,128,128,32,16,4])
+    dense_shape = np.array([12,32,128,128,256,1287,128,64,32,8])
     #dense_shape = np.array([12,256,1024,512]) v1
 
     __FILTER_SIZE__ = 3
@@ -53,9 +53,11 @@ def HW_Disc_Dense(input_shape):
         if (j % 2 == 0):
             x = keras.layers.MaxPooling1D(name = __NAME_PREFIX__+ 'maxpool_num_%d' % (j), pool_size = 2)(x)
 
+        x = keras.layers.Dropout(name = __NAME_PREFIX__+ 'dropout_num_%d' %(j), rate = 0.2)(x)
+
         return x
 
-    def add_disc_repetition_v3(x, ori_x, filters, j):
+    def add_disc_repetition_v2(x, ori_x, filters, j):
         filter_size = __FILTER_SIZE__
         factor = 2
 
@@ -75,6 +77,30 @@ def HW_Disc_Dense(input_shape):
         if (j % 2 == 0):
             x = keras.layers.MaxPooling1D(name = __NAME_PREFIX__+ 'maxpool_num_%d' % (j), pool_size = 2)(x)
 
+        x = keras.layers.Dropout(name = __NAME_PREFIX__+ 'dropout_num_%d' %(j), rate = 0.2)(x)
+
+        return x
+
+    def add_disc_repetition_v3(x, ori_x, filters, j):
+        filter_size = __FILTER_SIZE__
+        factor = 2
+
+        activation= keras.layers.LeakyReLU(alpha=0.5,
+                                           name = __NAME_PREFIX__+ 'act_1_%d_x_%d' %(filters, j) )
+
+        x = keras.layers.Conv1D(filters,
+                                filter_size, activation='linear',
+                                padding = 'same',
+                                kernel_regularizer=regularizers.l2(0.001),
+                                #activity_regularizer=regularizers.l1(0.0001),
+                                name = __NAME_PREFIX__+ 'cv1_1_%d_x_%d' %(filters, j) )(x)
+        x = activation(x)
+        
+        if (j % 2 == 0):
+            x = keras.layers.MaxPooling1D(name = __NAME_PREFIX__+ 'maxpool_num_%d' % (j), pool_size = 2)(x)
+
+        x = keras.layers.Dropout(name = __NAME_PREFIX__+ 'dropout_num_%d' %(j), rate = 0.2)(x)
+
         return x
 
 
@@ -93,11 +119,16 @@ def HW_Disc_Dense(input_shape):
 
     for j in range(len(dense_shape)):
         filters = dense_shape[j]
-        x = add_disc_repetition_v2(x, ori_x, filters, j)
+        x = add_disc_repetition_v3(x, ori_x, filters, j)
 
     x = keras.layers.Flatten(name = __NAME_PREFIX__ + "flatten")(x)
 
+    activation= keras.layers.LeakyReLU(alpha=0.2,
+                                       name = __NAME_PREFIX__+ 'act' )
+
     x = keras.layers.Dense(1, activation='linear', name = __NAME_PREFIX__ + "shift" )(x)
+
+    x = activation(x)
 
     exit = keras.layers.Dense(1, activation='sigmoid', name = __NAME_PREFIX__ + "exit" )(x)
 
@@ -194,7 +225,7 @@ def create_discriminator(input_shape):
     model = HW_Disc_Dense(input_shape)
 
     
-    model.compile(optimizer=adam,
+    model.compile(optimizer='adam',
                   loss='MSE',
                   metrics=['MSE']
     )
@@ -409,7 +440,7 @@ def HW_decoder(input_shape):
 
     __SEED_TRANS_NUM__ = 5
 
-    __SHAPE__ = [32, 64, 128, 256, 512, 512, 512, 512, 1024, 2048]
+    __SHAPE__ = [32, 64, 128, 256, 256, 256, 256, 128, 128, 64]
 
 
     conv_shape = __SHAPE__
@@ -437,14 +468,14 @@ def HW_decoder(input_shape):
 
         s = seed
         (b_size, x_size, y_size, c_size) = base_layer.output_shape
-        s51 = keras.layers.Dense(c_size, activation=activation, name = __NAME_PREFIX__ + "dense51_%d_num_%d" %(filters, j) )(s)
-        s52 = keras.layers.Dense(c_size, activation=activation, name = __NAME_PREFIX__ + "dense52_%d_num_%d" %(filters, j) )(s51)
-        s53 = keras.layers.Dense(c_size, activation=activation, name = __NAME_PREFIX__ + "dense53_%d_num_%d" %(filters, j) )(s52)
-        s54 = keras.layers.Dense(c_size, activation=activation, name = __NAME_PREFIX__ + "dense54_%d_num_%d" %(filters, j) )(s53)
-        s5 = keras.layers.Dense(x_size * c_size, activation=activation, name = __NAME_PREFIX__ + "dense5_%d_num_%d" %(filters, j) )(s54)
+        s51 = keras.layers.Dense(c_size * 2 , activation=activation, name = __NAME_PREFIX__ + "dense51_%d_num_%d" %(filters, j) )(s)
+        s52 = keras.layers.Dense(c_size, activation=activation, name = __NAME_PREFIX__ + "dense53_%d_num_%d" %(filters, j) )(s51)
+        s5 = keras.layers.Dense(x_size * c_size, activation=activation, name = __NAME_PREFIX__ + "dense5_%d_num_%d" %(filters, j) )(s52)
         s5 = keras.layers.Reshape([x_size, y_size, c_size])(s5)
 
         x = keras.layers.Add(name = __NAME_PREFIX__+ 'add_num_%d' %(j))([x1, x2, x3, s5])
+
+        x = keras.layers.Dropout(name = __NAME_PREFIX__+ 'dropout_num_%d' %(j), rate = 0.2)(x)
         return x
 
 
@@ -632,15 +663,24 @@ def load_model_pack(path, model_name, trainable = None, entry = "entry", exit = 
 def gen_seeds(size = 10000):
     seeds = np.random.rand(size, 6)
 
-    seeds [:,4] = 0
-    seeds /= 2
+    seeds [:,0] *= 0.8
+    seeds [:,1] *= 0.7
+    seeds [:,2] *= 0.17
+    seeds [:,3] *= 0.33
+    seeds [:,4] *= 0
+    seeds [:,5] *= 0.63
+
+    print "min:"
+    print seeds.min(axis = 0)
+    print "max:"
+    print seeds.max(axis = 0)
 
     return seeds.reshape([-1,1,6])
 
 def create_and_fit_decoder(affine_train, affine_test, path):
     deco_model = HW_decoder([None,1,affine_train.shape[-1]])
 
-    deco_model.compile(optimizer = adam,
+    deco_model.compile(optimizer = 'adam',
                        loss = 'MSE',
     )
 
@@ -669,10 +709,10 @@ def fit_generator_decoder(gene_model, demo_data, path, size = 10000, skip_fit = 
     print
 
     seeds = gen_seeds(size)
-    losses = np.zeros(size).reshape(-1,1)
+    losses = np.ones(size).reshape(-1,1)
 
     random_data = [seeds , losses]
-    affine_data = [ demo_data[:,0:1,:], np.zeros(demo_data.shape[0]).reshape(-1,1) ]
+    affine_data = [ demo_data[:,0:1,:], np.ones(demo_data.shape[0]).reshape(-1,1) ]
 
     sampled_data = merge_data(random_data, affine_data)
 
@@ -685,19 +725,20 @@ def fit_generator_decoder(gene_model, demo_data, path, size = 10000, skip_fit = 
     return gene_model, gen_predicted_data
 
 def translate_and_merge(affine_train, gen_predicted_data, train_data):
-    __MULTI_FACTOR__ = 4
+    __MULTI_FACTOR__ = 1
     gen_X = gen_predicted_data[0]
-    gen_Y = np.zeros(gen_X.shape[0]).reshape(-1,1)
+    gen_Y = gen_predicted_data[1]
 
     translation_X = []
     translation_Y = []
     for index in range(gen_X.shape[0]):
         X = np.copy(gen_X[index])
+        Y = gen_Y[index]
         translation_X.append(X)
-        translation_Y.append(1.0)
+        translation_Y.append(Y/3.0)
 
         dest = X[0,:]
-        #visualize_script(X)
+        #visualize_script(X, dist = Y)
 
         for cnt in range(__MULTI_FACTOR__):
             into_index = np.random.randint(affine_train.shape[0])
@@ -709,21 +750,75 @@ def translate_and_merge(affine_train, gen_predicted_data, train_data):
             affine_X = X
             affine_X -= source
             affine_X += dest
-            #visualize_script(affine_X)
+            #visualize_script(affine_X, dist = "translated")
+            affine_X = np.copy(affine_X)
     
             translation_X.append(affine_X)
-            translation_Y.append(0.0)
+            translation_Y.append(1.0)
 
     translation_X = np.array(translation_X)
     translation_Y = np.array(translation_Y).reshape(-1,1)
 
-    print translation_X.shape
-    print translation_Y.shape
-    print train_data[0].shape
-
     translation_data = [ translation_X, translation_Y ]
 
+    print "!!!!!!!!!!!!!!"
+    print 
+    print "!!!!!!!!!!!!!! train_data"
+    print train_data[0].shape
+    print "!!!!!!!!!!!!!! translation_data"
+    print translation_data[0].shape
     data = merge_data(train_data, translation_data)
+    print "!!!!!!!!!!!!!!"
+    print 
+    print "!!!!!!!!!!!!!!"
+    print 
+    print "!!!!!!!!!!!!!!"
+    print 
+    print "!!!!!!!!!!!!!!"
+    print 
+    print data[0].shape
+    print data[1].shape
+
+    accu_dataset_name_prefix = args.output_dir + "/temp_"
+
+    accu_dataset_X = load_from_npy(accu_dataset_name_prefix + "X.npy")
+    accu_dataset_Y = load_from_npy(accu_dataset_name_prefix + "Y.npy")
+
+
+    size = args.__MAX_ACCU_DATA_SIZE__
+    size = translation_data[0].shape[0] * 2
+    if accu_dataset_X is not None:
+        print "!!!!!!!!!!!!!!"
+        print 
+        print "!!!!!!!!!!!!!!"
+        print 
+        print "!!!!!!!!!!!!!!"
+        print 
+        print "!!!!!!!!!!!!!!"
+        print 
+        print accu_dataset_X.shape
+        print accu_dataset_Y.shape
+
+        accu_dataset = [accu_dataset_X, accu_dataset_Y]
+        data = merge_data(data, accu_dataset)
+        data = sample_from(data, size)
+
+    print "!!!!!!!!!!!!!!"
+    print 
+    print "!!!!!!!!!!!!!!"
+    print 
+    print "!!!!!!!!!!!!!!"
+    print 
+    print "!!!!!!!!!!!!!!"
+    print 
+    print data[0].shape
+    print data[1].shape
+    save_to_npy(data[0], accu_dataset_name_prefix + "X.npy")
+    save_to_npy(data[1], accu_dataset_name_prefix + "Y.npy")
+
+    for cnt in range(25):
+        index = np.random.randint(data[0].shape[0])
+        #visualize_script(data[0][index], dist = data[1][index])
 
     return data
 
@@ -768,6 +863,13 @@ def merge_data(data1, data2):
     ]
     return sample
 
+def sample_from(data, size):
+    X, Y = data
+    sample_indices = np.random.choice(X.shape[0], size, replace=True)
+    X = X[sample_indices]
+    Y = Y[sample_indices]
+    return [X, Y]
+
 def save_sample_figures(scripts, save_path, prefix = "sample_fig", size = args.sive_fig_num):
     max_size = 100;
     if save_path is not None:
@@ -799,11 +901,6 @@ def run_iteration(train_data, test_data, affine_train, affine_test, iteration = 
     #deco_pack = extract_model_from_generator(model_name = args.__DECO_MODEL_NAME__, new_model_name = new_model_name)
     deco_pack = load_model_pack (path = args.output_dir + args.__DECO_FOLDER__, model_name = args.__DECO_MODEL_NAME__, entry = args.__DECO_MODEL_NAME__ + "_entry", exit = args.__DECO_MODEL_NAME__ + "_exit") 
 
-    print deco_pack
-    print deco_pack[2].summary()
-    print deco_pack[2].output
-    #sys.exit()
-    
     print "\n\n-------- load_discriminator  ----------\n\n"
     disc_pack = load_model_pack(path = args.output_dir + args.__DISC_FOLDER__, model_name = args.__DISC_MODEL_NAME__, entry = args.__DISC_MODEL_NAME__ + "_entry", exit = args.__DISC_MODEL_NAME__ + "_exit")
 
@@ -814,7 +911,7 @@ def run_iteration(train_data, test_data, affine_train, affine_test, iteration = 
 
         prefix = "Demonstration"
         demo = affine_test
-        demo = affine_train[:1000] #TODO
+        #demo = affine_train[:1000] #TODO
         save_sample_figures(demo, save_samples_path, prefix)
 
     gene_model, gen_predicted_data = fit_generator_decoder(gene_model = gene_model, demo_data = affine_train, path = path, size = size, skip_fit = False)
@@ -822,7 +919,7 @@ def run_iteration(train_data, test_data, affine_train, affine_test, iteration = 
     print "\n\n-------- predicting using seeds from affine_test data  ----------\n\n"
     prefix = "Predicted_In_Iteration_" + str(iteration)
     affine_test_seeds = affine_test[:,:1,:]
-    affine_test_seeds = affine_train[:1000,:1,:] #TODO
+    #affine_test_seeds = affine_train[:1000,:1,:] #TODO
     gen_predicted_affine_test_data = predict_scripts(gene_model, affine_test_seeds)
 
     print "\n\n-------- saving samples of prediction to disk  ----------\n\n"
@@ -865,7 +962,7 @@ def main():
         config_generator (gene_model, deco_trainable = False, disc_trainable = False)
         # only train a tiny dataset, and save the model
         mini_size = 3
-        mini_data = [ np.zeros(mini_size * 6).reshape(mini_size, 1, 6), np.zeros(mini_size).reshape(-1, 1) ]
+        mini_data = [ np.ones(mini_size * 6).reshape(mini_size, 1, 6), np.ones(mini_size).reshape(-1, 1) ]
 
         gene_model = fit_and_save_model(gene_model, train = mini_data, test = None, model_output_path = args.output_dir + args.__GENE_FOLDER__, epochs = 1, visualize_train = False)
         

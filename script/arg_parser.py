@@ -35,6 +35,7 @@ def argumentParser():
 
     args.__FIG_FOLDER__ = "/NN_model_saved_figures/"
 
+    args.__MAX_ACCU_DATA_SIZE__ = 1000000
 
     return args
 
