@@ -41,7 +41,10 @@ class Sreader {
       ss >> pitch;
       double yaw;
       ss >> yaw;
-      
+
+      y-=0.1;
+      z+=0.2;
+      time *= 3;
       geometry_msgs::PoseStamped ps;
       ps.header.frame_id = "root";
       ros::Duration duration(time);

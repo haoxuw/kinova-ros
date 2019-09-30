@@ -93,9 +93,9 @@ RobustGrasp::RobustGrasp(ros::NodeHandle &nh):nh_(nh) {
   clear_workscene();
   build_workscene();
   max_attempts = 5;
-  geometry_msgs::PoseStamped spose = generate_pose(HOME_POSE);
-  move_arm(spose);
-  move_gripper("open");
+  //geometry_msgs::PoseStamped spose = generate_pose(HOME_POSE);
+  //move_arm(spose);
+  //move_gripper("open");
 }
 
 RobustGrasp::~RobustGrasp()
@@ -600,7 +600,7 @@ void RobustGrasp::listen_to_console() {
 
   while(true) {
     if (true) {
-      string path = "/home/haoxuw/mcgill/kinova/src/kinova-ros/script/fake_results/";
+      string path = "/home/haoxuw/mcgill/kinova/src/kinova-ros/script/learned_scripts/";
       run_scripts(path);
       ros::shutdown();
       break;
