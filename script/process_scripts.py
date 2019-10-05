@@ -3,11 +3,12 @@ from arg_parser import *
 mini = True
 mini = False
 if mini == True:
-    __OUTNAME__ = "mini"
+    __OUTNAME__ = "_mini"
     __AFFINE_MULTIPLIER__ = 50
     __MUTATE_MULTIPLIER__ = 10
     __MUTATE_LENGTH__ = 10
 else:
+    __OUTNAME__ = ""
     __AFFINE_MULTIPLIER__ = 10000 #00
     __MUTATE_MULTIPLIER__ = 1
     __MUTATE_LENGTH__ = 4
@@ -325,10 +326,11 @@ def dump_np_array(names, dists, scripts, output_path, output_suffix, plot_sample
     for index, (name, dist, scri_ori) in enumerate(zip(names, dists, scripts)):
         for i in range(__AFFINE_MULTIPLIER__):
             scri = np.copy(scri_ori)
-            scri = affine_script(scri)
-            #visualize_script(scri)
-            #visualize_script(scri, dist = "affine", dequant = False)
+            #visualize_script(scri, filename = output_path + "%02d_ori" %index, dist = "original", dequant = False)
             scri = expand_script(scri[:])
+            #visualize_script(scri, filename = output_path + "%02d_exp" %index, dist = "filled", dequant = False)
+            scri = affine_script(scri)
+            #visualize_script(scri, filename = output_path + "%02d_rot" %index, dist = "2d_rotated", dequant = False)
             #visualize_script(scri)
             dist = 1
             if output_traj_files:
@@ -345,6 +347,7 @@ def dump_np_array(names, dists, scripts, output_path, output_suffix, plot_sample
                 dist_mut = dist
 
                 delta_dist, scri_mut = mutate_script(scri_mut)
+                #visualize_script(scri_mut, dist = "scrambled", filename = output_path + "%02d_scr" %index, dequant = False)
                 dist_mut += delta_dist
 
                 if output_traj_files:
@@ -410,7 +413,7 @@ def create_fake_trajs(input_path, output_path):
 
 
 def main():
-    create_fake_trajs(args.input_dir, args.output_dir)
+    create_fake_trajs(args.input_dir, args.output_dir[:-1] + __OUTNAME__ + "/")
 
     #visualize_trajs(output_path)
 

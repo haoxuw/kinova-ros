@@ -14,4 +14,5 @@ for filename in fnames:
             
             crop_img = img[y:y+h, x:x+w]
             cv2.imshow("cropped", crop_img)
+            cv2.imwrite("cropped/"+filename, crop_img)
             cv2.waitKey(10)
