@@ -9,7 +9,7 @@ if mini == True:
     __MUTATE_LENGTH__ = 10
 else:
     __OUTNAME__ = ""
-    __AFFINE_MULTIPLIER__ = 10000 #00
+    __AFFINE_MULTIPLIER__ = 1000 #00
     __MUTATE_MULTIPLIER__ = 1
     __MUTATE_LENGTH__ = 4
 
@@ -325,14 +325,21 @@ def dump_np_array(names, dists, scripts, output_path, output_suffix, plot_sample
 
     for index, (name, dist, scri_ori) in enumerate(zip(names, dists, scripts)):
         for i in range(__AFFINE_MULTIPLIER__):
+            dist = 1
+
             scri = np.copy(scri_ori)
             #visualize_script(scri, filename = output_path + "%02d_ori" %index, dist = "original", dequant = False)
             scri = expand_script(scri[:])
             #visualize_script(scri, filename = output_path + "%02d_exp" %index, dist = "filled", dequant = False)
+
+            if index == 0:
+                arr_traj.append(np.copy(scri))
+                arr_dist.append(np.copy(dist))
+                continue
+                
             scri = affine_script(scri)
             #visualize_script(scri, filename = output_path + "%02d_rot" %index, dist = "2d_rotated", dequant = False)
             #visualize_script(scri)
-            dist = 1
             if output_traj_files:
                 write_script_to_traj(dist, scri, output_path + "/fake_" + str(cnt) + "_affine.traj")
                 cnt += 1
@@ -405,6 +412,8 @@ def dump_np_array(names, dists, scripts, output_path, output_suffix, plot_sample
     print arr_traj.max(axis = 0).max(axis = 0)
 
 def create_fake_trajs(input_path, output_path):
+    os.system('mkdir -p ' + output_path)
+    
     names, dists, scripts = load_task_file_under_path(input_path);
 
     test = 2

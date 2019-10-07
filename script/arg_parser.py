@@ -24,13 +24,13 @@ def argumentParser():
     args.__TEST_SIZE__ = 1000
     args.__TEST_RATIO__ = 0.1
 
-    args.__DECO_MODEL_NAME__ = "hw_deco"
-    args.__DISC_MODEL_NAME__ = "hw_disc"
-    args.__GENE_MODEL_NAME__ = "hw_gene"
+    args.__DECO_MODEL_NAME__ = "hw_Generator"
+    args.__DISC_MODEL_NAME__ = "hw_Discriminator"
+    args.__GAN_MODEL_NAME__  = "hw_GAN"
     args.__AUTO_MODEL_NAME__ = "hw_auto"
-    args.__DECO_FOLDER__ = "/NN_model_deco/"
+    args.__DECO_FOLDER__ = "/NN_model_gene/"
     args.__DISC_FOLDER__ = "/NN_model_disc/"
-    args.__GENE_FOLDER__ = "/NN_model_gene/"
+    args.__GAN_FOLDER__  = "/NN_model_gan/"
     args.__AUTO_FOLDER__ = "/NN_model_auto/"
 
     args.__FIG_FOLDER__ = "/NN_model_saved_figures/"

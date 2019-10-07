@@ -1,4 +1,4 @@
-python -m pip install empy
+python -m pip install empy pydot graphviz
 sudo apt-get install ros-kinetic-moveit
 sudo apt-get install ros-kinetic-ros-control ros-kinetic-ros-controllers
 sudo apt-get install ros-kinetic-gazebo-ros-control
