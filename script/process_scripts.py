@@ -9,7 +9,7 @@ if mini == True:
     __MUTATE_LENGTH__ = 10
 else:
     __OUTNAME__ = ""
-    __AFFINE_MULTIPLIER__ = 1000 #00
+    __AFFINE_MULTIPLIER__ = 10000
     __MUTATE_MULTIPLIER__ = 1
     __MUTATE_LENGTH__ = 4
 
@@ -412,6 +412,9 @@ def dump_np_array(names, dists, scripts, output_path, output_suffix, plot_sample
     print arr_traj.max(axis = 0).max(axis = 0)
 
 def create_fake_trajs(input_path, output_path):
+    if not output_path:
+        return
+    os.system('rm -f ' + output_path + "/./*")
     os.system('mkdir -p ' + output_path)
     
     names, dists, scripts = load_task_file_under_path(input_path);

@@ -23,10 +23,9 @@ def HW_Disc_Dense(input_shape):
     __NAME__ = args.__DISC_MODEL_NAME__
     __NAME_PREFIX__ = __NAME__ + "_"
  
-    activation = 'relu'
     activation = 'tanh'
 
-    dense_shape = np.array([12,32,128,128,256,512,128,64,32,8])
+    dense_shape = np.array([12,32,128,256,256,1024,128,64,32,8])
     #dense_shape = np.array([12,256,1024,512]) v1
 
     __FILTER_SIZE__ = 3
@@ -140,86 +139,6 @@ def HW_Disc_Dense(input_shape):
 
 
 
-def HW_Disc_Conv1D(input_shape):
-    __NAME__ = args.__DISC_MODEL_NAME__
-    __NAME_PREFIX__ = __NAME__ + "_"
-    __FACTOR__ = 4
-    __FILTER_SIZE__ = 3
-
-    activation = 'relu'
-
-    def add_repetition_unit_v1(x, filters, filter_size, j):
-        x = keras.layers.Conv1D(filters, filter_size, activation=activation, name = __NAME_PREFIX__+ 'cv1_%d_x_%d' %(filters, j) )(x)
-        return x
-
-    def add_repetition_unit_v2(x, filters, filter_size, j):
-        ori_x = x
-
-
-        x1 = keras.layers.Conv1D(filters, filter_size, activation=activation, name = __NAME_PREFIX__+ 'cv1_%d_x_%d' %(filters, j) )(x)
-        
-        x2 = x
-        x2 = keras.layers.Conv1D(filters, filter_size, activation=activation, name = __NAME_PREFIX__+ 'cv1_21_%d_x_%d' %(filters, j) )(x2)
-        x2 = keras.layers.Conv1D(filters, filter_size, activation=activation, name = __NAME_PREFIX__+ 'cv1_22_%d_x_%d' %(filters, j), padding = 'same' )(x2)
-        x2 = keras.layers.Conv1D(filters, filter_size, activation=activation, name = __NAME_PREFIX__+ 'cv1_23_%d_x_%d' %(filters, j), padding = 'same' )(x2)
-
-        x3 = x
-        x3 = keras.layers.Conv1D(filters, filter_size, activation=activation, name = __NAME_PREFIX__+ 'cv1_3_%d_x_%d' %(filters, j) )(x3)
-        x3 = keras.layers.Dense(filters, activation=activation, name = __NAME_PREFIX__ + "dense31_%d_num_%d" %(filters, j) )(x3)
-        x3 = keras.layers.Dense(filters, activation=activation, name = __NAME_PREFIX__ + "dense32_%d_num_%d" %(filters, j) )(x3)
-        x3 = keras.layers.Dense(filters, activation=activation, name = __NAME_PREFIX__ + "dense33_%d_num_%d" %(filters, j) )(x3)
-
-        x = keras.layers.Add(name = __NAME_PREFIX__+ 'add_num_%d' %(j))([x1, x2, x3])
-        x = x3
-
-        return x
-
-    conv_shape = np.array([12,12,12,12,12,12,64,64,64,64,64,128,128,128,128,128,128,128,128,128,128,128,256,])
-    filter_size = args.__FILTER_SIZE__
-
-    stride = 1
-    padding = 0
-    last_layer_x = input_shape[1]
-
-    entry = keras.layers.Input(shape=input_shape[1:], name = __NAME_PREFIX__ + "entry")
-
-    x = entry
-
-    v1 = keras.layers.Cropping1D(cropping=([1, 0]), name = __NAME_PREFIX__ + "cropping_v1" )(x)
-    v2 = keras.layers.Cropping1D(cropping=([0, 1]), name = __NAME_PREFIX__ + "cropping_v2" )(x)
-    v = keras.layers.Subtract(name = __NAME_PREFIX__+ 'sub_v')([v2,v1])
-    x = keras.layers.Concatenate(name = __NAME_PREFIX__+ 'concat_v', axis = 2)([v,v2])
-
-    for j in range(len(conv_shape)):
-        filters = conv_shape[j]
-        last_layer_x = (last_layer_x - filter_size + 2 * padding) / stride + 1
-        #print last_layer_x
-        if last_layer_x < 1:
-            print "last_layer_x %d < 1" % last_layer_x
-            sys.exit(last_layer_x)
-        x = add_repetition_unit_v2(x, filters, filter_size, j)
-
-    x = keras.layers.Flatten(name = __NAME_PREFIX__ + "flatten")(x)
-
-    dim = conv_shape[-1] * input_shape[2] # last_layer_x * 
-    dense_shape = []
-
-    activation = 'sigmoid'
-    activation = 'linear'
-    cnt = 0
-    while dim > 4:
-        dim /= args.__FACTOR__
-        x = keras.layers.Dense(dim, activation=activation, name = __NAME_PREFIX__ + "dense_" + str(cnt) )(x)
-        cnt += 1
-
-    exit = keras.layers.Dense(1, activation='sigmoid', name = __NAME_PREFIX__ + "exit" )(x)
-
-    model = keras.Model(inputs=entry, outputs=exit, name= __NAME__)
-
-    print model.summary()
-
-    return model
-
 class EarlyStoppingByLossVal(keras.callbacks.Callback):
     def __init__(self, monitor='loss', value=0.00001, verbose=0):
         super(keras.callbacks.Callback, self).__init__()
@@ -263,7 +182,9 @@ def fit_and_save_model(model, train, test, model_output_path, save_model = True,
             y = Y[i]
             visualize_script(x, dist = y)
 
-    fit = model.fit(X, Y, epochs = epochs, batch_size= batch, shuffle=True, validation_split=( args.__TEST_RATIO__), callbacks=callbacks)
+    history = model.fit(X, Y, epochs = epochs, batch_size= batch, shuffle=True, validation_split=( args.__TEST_RATIO__), callbacks=callbacks)
+
+    os.system('echo ' + str(history.history['val_loss'][0]) + ' >> ' + model_output_path + '/' + model.name + '_fit_history.txt')
 
     if save_model:
         model.save(model_output_path + model.name + '.h5')
@@ -409,7 +330,6 @@ def load_np_data(path, chop_time = True, max_size = -1, visualize = False, max_t
     return test, train, affine_test, affine_train
 
 def create_discriminator(input_shape):
-    #model = HW_Disc_Conv1D(input_shape)
     model = HW_Disc_Dense(input_shape)
 
     
@@ -806,8 +726,10 @@ def translate_and_merge(affine_train, gen_predicted_data, train_data):
     accu_dataset_Y = load_from_npy(accu_dataset_name_prefix + "Y.npy")
 
 
-    size = args.__MAX_ACCU_DATA_SIZE__
     size = translation_data[0].shape[0] * 2
+    if size > args.__MAX_ACCU_DATA_SIZE__:
+        size = args.__MAX_ACCU_DATA_SIZE__
+
     if accu_dataset_X is not None:
         accu_dataset = [accu_dataset_X, accu_dataset_Y]
         data = merge_data(data, accu_dataset)
@@ -865,6 +787,8 @@ def merge_data(data1, data2):
 
 def sample_from(data, size):
     X, Y = data
+    if size > X.shape[0]:
+        size = X.shape[0]
     sample_indices = np.random.choice(X.shape[0], size, replace=True)
     X = X[sample_indices]
     Y = Y[sample_indices]
