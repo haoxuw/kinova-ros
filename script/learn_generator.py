@@ -785,7 +785,7 @@ def save_sample_figures(scripts, save_path, prefix = "sample_fig", size = args.s
             if max_size == 0:
                 break
 
-def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iterations = 0, path = args.__GAN_FOLDER__, save_samples_path = args.__FIG_FOLDER__):
+def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iterations = 0, path = args.__GAN_FOLDER__, save_samples_folder = args.__FIG_FOLDER__):
     print 
     print 
     print 
@@ -812,10 +812,11 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
     save_freq = iterations / 100
     if save_freq < 1:
         save_freq = 2
+    save_freq = 100 # overwrite
     save_num = args.save_fig_num
     
     prefix = "Test_Demo"
-    save_sample_figures(affine_test, save_samples_path, prefix)
+    save_sample_figures(affine_test, save_samples_folder, prefix)
 
     for itera in range(iterations):
         x_train = affine_train
@@ -827,28 +828,36 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
 
         if (itera % save_freq == 0) and False:
             prefix = "Train_Predicted_In_Iteration_" + str(itera)
-            save_sample_figures(predicted_scripts, save_samples_path, prefix)
+            save_sample_figures(predicted_scripts, save_samples_folder, prefix)
 
         #print "gan.discriminator._collected_trainable_weights" + str([x.name for x in gan.discriminator._collected_trainable_weights])
         d_loss_real = gan.discriminator.train_on_batch(x_batch, real)
         d_loss_fake = gan.discriminator.train_on_batch(train_predicted_scripts, fake)
 
-        if save_samples_path and (itera % save_freq == 0):
-            print "\n\n-------- predicting using seeds  ----------\n\n"
-            affine_test_seeds = affine_test[:,:1,:]
-            predicted_scripts = gan.predict_scripts(affine_test_seeds)
-
-            print "\n\n-------- saving samples of prediction to disk  ----------\n\n"
-            prefix = "Test_Predicted_In_Iteration_" + str(itera)
-            save_sample_figures(predicted_scripts, save_samples_path, prefix)
-
-
         random_seeds = rand_seeds(batch)
         #print "gan.combined._collected_trainable_weights" + str([x.name for x in gan.combined._collected_trainable_weights])
         g_loss = gan.combined.train_on_batch(random_seeds, real)
 
-        if (itera % save_freq == 0):
-            print "iteration %d    d_loss_real   %r  d_loss_fake   %r  g_loss    %r" %(itera,d_loss_real,d_loss_fake,random_seeds)
+        print gan.discriminator.metrics_names
+        print gan.combined.metrics_names
+
+        if save_samples_folder and (itera % save_freq == 0):
+            print "\n\n-------- predicting using seeds  ----------\n\n"
+            affine_test_seeds = affine_test[:,:1,:]
+            
+            groudtruth_scripts = affine_test[:,:,:]
+            predicted_scripts  = gan.predict_scripts(affine_test_seeds)
+
+            g_eval_MSE = ((groudtruth_scripts - predicted_scripts) ** 2).mean()
+
+            print "\n\n-------- saving samples of prediction to disk  ----------\n\n"
+            prefix = "Test_Predicted_In_Iteration_" + str(itera)
+            save_sample_figures(predicted_scripts, save_samples_folder, prefix)
+
+
+            log = "iteration %d \t d_loss_real %r \t d_loss_fake %r \t g_loss %r \t g_eval_MSE %r" %(itera, d_loss_real, d_loss_fake, g_loss, g_eval_MSE)
+            print log
+            os.system('echo ' + log + ' >> ' + args.output_dir + save_samples_folder + '/gan_fit_history.txt')
 
     #prefix = "posdisc_iter_" + str(iteration)
 
