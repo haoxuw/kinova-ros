@@ -10,13 +10,13 @@ def argumentParser():
     parser.add_argument('--batch', type=int, default=64, help='')
     parser.add_argument('--steps_per_epoch', type=int, default=1024, help='')
 
-    parser.add_argument('--max_size', type=int, default=-1, help='')
+    parser.add_argument('--max_size', type=int, default=100000, help='')
 
     parser.add_argument('--itera', type=int, default=0, help='')
-    parser.add_argument('--re_train', action="store_true")
+    parser.add_argument('--train_gan', action="store_true")
     parser.add_argument('--view', action="store_true")
 
-    parser.add_argument('--sive_fig_num', type=int, default=11, help='')
+    parser.add_argument('--save_fig_num', type=int, default=11, help='')
     
 
     args = parser.parse_args()

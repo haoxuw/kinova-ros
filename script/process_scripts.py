@@ -9,7 +9,7 @@ if mini == True:
     __MUTATE_LENGTH__ = 10
 else:
     __OUTNAME__ = ""
-    __AFFINE_MULTIPLIER__ = 10000
+    __AFFINE_MULTIPLIER__ = args.max_size / 10
     __MUTATE_MULTIPLIER__ = 1
     __MUTATE_LENGTH__ = 4
 
@@ -327,18 +327,17 @@ def dump_np_array(names, dists, scripts, output_path, output_suffix, plot_sample
         for i in range(__AFFINE_MULTIPLIER__):
             dist = 1
 
+            filename = None
             scri = np.copy(scri_ori)
-            #visualize_script(scri, filename = output_path + "%02d_ori" %index, dist = "original", dequant = False)
+            #filename = output_path + "%02d_ori" %index
+            #visualize_script(scri, filename, dist = "original", dequant = False)
             scri = expand_script(scri[:])
-            #visualize_script(scri, filename = output_path + "%02d_exp" %index, dist = "filled", dequant = False)
+            #filename = output_path + "%02d_exp" %index
+            #visualize_script(scri, filename, dist = "filled", dequant = False)
 
-            if index == 0:
-                arr_traj.append(np.copy(scri))
-                arr_dist.append(np.copy(dist))
-                continue
-                
             scri = affine_script(scri)
-            #visualize_script(scri, filename = output_path + "%02d_rot" %index, dist = "2d_rotated", dequant = False)
+            #filename = output_path + "%02d_rot" %index
+            #visualize_script(scri, filename, dist = "2d_rotated", dequant = False)
             #visualize_script(scri)
             if output_traj_files:
                 write_script_to_traj(dist, scri, output_path + "/fake_" + str(cnt) + "_affine.traj")
@@ -392,16 +391,16 @@ def dump_np_array(names, dists, scripts, output_path, output_suffix, plot_sample
 
     if plot_samples:
         os.system('mkdir -p ' + output_path + sample_img_dir)
-        for i in range(0, len(affine_arr_traj), len(affine_arr_traj) / 11):
+        for i in range(0, len(affine_arr_traj), len(affine_arr_traj) / 5):
             filename = output_path + sample_img_dir + "/" + plot_samples + '_affile_sample_%d.png' %i
             traj = affine_arr_traj[i]
             #visualize_script(traj, dist = "affine")
             visualize_script(traj, filename, dist = "affine transformed")
-        for i in range(0, len(arr_traj), len(arr_traj) / 11):
+        for i in range(0, len(arr_traj), len(arr_traj) / 5):
             filename = output_path + sample_img_dir + "/" + plot_samples + '_sample_%d.png' %i
             traj = arr_traj[i]
             #visualize_script(traj, dist = arr_dist[i])
-            visualize_script(traj, filename, dist = "scrambled")
+            visualize_script(traj, filename, dist = "scrambled score %d" % arr_dist[i])
                 
     arr_traj = dequantize(arr_traj, fixed_range, start = 1)
     print "after dequantize"
@@ -414,14 +413,13 @@ def dump_np_array(names, dists, scripts, output_path, output_suffix, plot_sample
 def create_fake_trajs(input_path, output_path):
     if not output_path:
         return
-    os.system('rm -f ' + output_path + "/./*")
     os.system('mkdir -p ' + output_path)
     
     names, dists, scripts = load_task_file_under_path(input_path);
 
     test = 2
-    dump_np_array(names[:2], dists[:2], scripts[:2], output_path, output_suffix = "test.npy", plot_samples = "test_data")
-    dump_np_array(names[2:], dists[2:], scripts[2:], output_path, output_suffix = "train.npy", plot_samples = "train_data")
+    dump_np_array(names[:-2], dists[:-2], scripts[:-2], output_path, output_suffix = "train.npy")#, plot_samples = "train_data")
+    dump_np_array(names[-2:], dists[-2:], scripts[-2:], output_path, output_suffix = "test.npy")#, plot_samples = "test_data")
 
 
 def main():

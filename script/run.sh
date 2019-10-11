@@ -2,20 +2,13 @@
 
 #set -x
 set -e
-max_size=100000 #0
+max_size=10000
 unit_size=1000
 max_iter=1000
 
-epochs=10
-rm -rf final_results/NN_model* && rm -rf final_results/temp* && python learn_generator.py --max_size ${max_size} --itera 0 --epochs ${epochs} --batch 16
+epochs=2
+rm -rf final_results/*
+python process_scripts.py --max_size ${max_size} # max_size = total_data_size
+python learn_generator.py --max_size ${max_size} --epochs ${epochs} --batch 16 # max_size = pre_train size
+python learn_generator.py --epochs 4 --batch 32 --train_gan --itera 10000 --save_fig_num 5 #  || play -n synth 1
 
-#exit
-
-for (( cnt=1; cnt <= max_iter; cnt++ ))
-do
-    (( size=unit_size * cnt ))
-    python learn_generator.py --max_size ${size} --epochs 2 --batch 32 --re_train --itera ${cnt} # || play -n synth 1
-
-done
-
-play -n synth 1
