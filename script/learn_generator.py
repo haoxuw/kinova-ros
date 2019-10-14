@@ -871,6 +871,7 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
             random_seeds = rand_seeds(batch)
         else:
             random_seeds = x_batch[:,:1,:] # TODO
+        random_seeds = x_batch[:,:1,:] # TODO
         train_predicted_scripts = gan.predict_scripts(random_seeds)
 
         if (itera % save_freq == 0) and False:
@@ -889,21 +890,21 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
             sampled_indices = np.random.randint(0, merged_data[0].shape[0], batch)
             sampled_history_x_batch = merged_data[0][sampled_indices]
             sampled_history_y_batch = merged_data[1][sampled_indices]
-            d_train = gan.discriminator.train_on_batch(sampled_history_x_batch, sampled_history_y_batch) #TODO
+            #d_train = gan.discriminator.train_on_batch(sampled_history_x_batch, sampled_history_y_batch) #TODO
             #visualize(sampled_history_x_batch, sampled_history_y_batch, 10)
             
             #d_loss = gan.discriminator.train_on_batch(affine_test, np.ones ((affine_test.shape[0], 1))) #TODO
-            #d_train_real = gan.discriminator.train_on_batch(x_batch, real)
+            d_train_real = gan.discriminator.train_on_batch(x_batch, real)
             #visualize(x_batch, real)
-            #d_train_fake = gan.discriminator.train_on_batch(train_predicted_scripts, fake)
+            d_train_fake = gan.discriminator.train_on_batch(train_predicted_scripts, fake + 0.3)
             #visualize(train_predicted_scripts, fake)
+            d_train = (np.array(d_train_real) + np.array(d_train_fake))/2
             print d_train
 
         g_train = gan.combined.train_on_batch(random_seeds, real)
         for j in range(args.epochs):
             random_seeds = rand_seeds(batch)
-            for k in range(10):
-                g_train = gan.combined.train_on_batch(random_seeds, real)
+            g_train = gan.combined.train_on_batch(random_seeds, real)
 
         #print gan.discriminator.metrics_names
         #print gan.combined.metrics_names
@@ -931,7 +932,6 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
             prefix = "Test_Predicted_In_Iteration_" + str(itera)
             save_sample_figures(predicted_scripts, args.save_fig_folder, prefix)
 
-            #d_train = (np.array(d_train_real) + np.array(d_train_fake))/2
             log = "%d \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r" %(itera, d_train[0], d_train[1], g_train[0], g_train[1], d_eval[0], d_eval[1], g_eval[0], g_eval[1], traj_eval_MSE)
             os.system('echo ' + log + ' >> ' + log_file_name)
             print log

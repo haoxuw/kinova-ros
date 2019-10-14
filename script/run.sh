@@ -3,7 +3,7 @@
 #set -x
 set -e
 #data_size=1000
-pre_train_size=5000
+pre_train_size=3
 max_iter=7000
 
 epochs=4
