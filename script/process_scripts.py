@@ -77,7 +77,7 @@ def add_time_axis(script):
     script = np.concatenate([time_series, script] , axis = 1)
     return script
 
-def visualize_script(script, filename = None, dist = None, dequant = True, write_traj = False):
+def visualize_script(script, dist = None, filename = None, dequant = True, write_traj = False):
     script = np.copy(script)
 
     if (script.shape == (64,6)):

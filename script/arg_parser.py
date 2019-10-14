@@ -17,7 +17,8 @@ def argumentParser():
     parser.add_argument('--view', action="store_true")
 
     parser.add_argument('--save_fig_num', type=int, default=11, help='')
-    
+    parser.add_argument('--save_fig_folder', type=str, default="/NN_model_saved_figures/", help='')
+    parser.add_argument('--save_fig_name', type=str, default="train_log", help='')
 
     args = parser.parse_args()
 

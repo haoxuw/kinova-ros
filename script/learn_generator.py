@@ -62,10 +62,10 @@ def HW_Disc_Dense():
     __NAME__ = args.__DISC_MODEL_NAME__
     __NAME_PREFIX__ = __NAME__ + "_"
  
-    dense_shape = np.array([12,32,128,256,256,1024,128,64,32,8])
+    dense_shape = np.array([12,32,128,256,32])
     #dense_shape = np.array([12,256,1024,512]) v1
 
-    __FILTER_SIZE__ = 3
+    __FILTER_SIZE__ = 7
     
 
     def add_disc_repetition_unit_v1(x, ori_x, filters, j):
@@ -86,8 +86,7 @@ def HW_Disc_Dense():
 
         x = keras.layers.Add(name = __NAME_PREFIX__+ 'add_num_%d' % (j))([x1, x3])
 
-        if (j % 2 == 0):
-            x = keras.layers.MaxPooling1D(name = __NAME_PREFIX__+ 'maxpool_num_%d' % (j), pool_size = 2)(x)
+        x = keras.layers.MaxPooling1D(name = __NAME_PREFIX__+ 'maxpool_num_%d' % (j), pool_size = 2)(x)
         x = keras.layers.Dropout(name = __NAME_PREFIX__+ 'dropout_num_%d' %(j), rate = 0.2)(x)
 
         return x
@@ -96,19 +95,18 @@ def HW_Disc_Dense():
         filter_size = __FILTER_SIZE__
         factor = 2
 
-        activation= keras.layers.LeakyReLU(alpha=0.5,
+        activation= keras.layers.LeakyReLU(alpha=0.4,
                                            name = __NAME_PREFIX__+ 'act_1_%d_x_%d' %(filters, j) )
 
         x = keras.layers.Conv1D(filters,
                                 filter_size, activation='linear',
                                 padding = 'same',
-                                kernel_regularizer=regularizers.l2(0.001),
+                                kernel_regularizer=regularizers.l2(0.01),
                                 #activity_regularizer=regularizers.l1(0.0001),
                                 name = __NAME_PREFIX__+ 'cv1_1_%d_x_%d' %(filters, j) )(x)
         x = activation(x)
         
-        if (j % 2 == 0):
-            x = keras.layers.MaxPooling1D(name = __NAME_PREFIX__+ 'maxpool_num_%d' % (j), pool_size = 2)(x)
+        x = keras.layers.MaxPooling1D(name = __NAME_PREFIX__+ 'maxpool_num_%d' % (j), pool_size = 2)(x)
 
         x = keras.layers.Dropout(name = __NAME_PREFIX__+ 'dropout_num_%d' %(j), rate = 0.2)(x)
 
@@ -185,17 +183,11 @@ def HW_Decoder():
 
         (b_size, x_size, y_size, c_size) = base_layer.output_shape
 
-        x41 = keras.layers.Conv2DTranspose(filters, (filter_size, 1), activation=activation, padding = 'valid', name = __NAME_PREFIX__+ 'deconv41_%d_num_%d' %(filters, j) )(x)
-        x42 = keras.layers.Dense(c_size * 2 , activation=activation, name = __NAME_PREFIX__ + "dense42_%d_num_%d" %(filters, j) )(x41)
-        x43 = keras.layers.Dense(c_size, activation=activation, name = __NAME_PREFIX__ + "dense43_%d_num_%d" %(filters, j) )(x42)
-        x4 = keras.layers.Reshape([x_size, y_size, c_size])(x43)
-
         x51 = keras.layers.Dense(c_size, activation=activation, name = __NAME_PREFIX__ + "seed51_%d_num_%d" %(filters, j) )(seed)
         x52 = keras.layers.Dense(c_size * x_size * y_size, activation=activation, name = __NAME_PREFIX__ + "seed52_%d_num_%d" %(filters, j) )(x51)
-        x53 = keras.layers.Dense(c_size * x_size * y_size, activation=activation, name = __NAME_PREFIX__ + "seed53_%d_num_%d" %(filters, j) )(x52)
-        x5 = keras.layers.Reshape([x_size, y_size, c_size])(x53)
+        x5 = keras.layers.Reshape([x_size, y_size, c_size])(x52)
 
-        x = keras.layers.Add(name = __NAME_PREFIX__+ 'add_num_%d' %(j))([x1, x2, x3, x4, x5])
+        x = keras.layers.Add(name = __NAME_PREFIX__+ 'add_num_%d' %(j))([x1, x2, x3, x5])
 
         x = keras.layers.Dropout(name = __NAME_PREFIX__+ 'dropout_num_%d' %(j), rate = 0.2)(x)
         return x
@@ -364,6 +356,7 @@ def fit_and_save_model(model, train, test, model_output_path, save_model = True,
             filename = model_output_path + '/fit_pred_sample_%d.png' % index
             visualize_script(script[index], dist = 'pred', filename = filename)
 
+    os.system('cp ' + checkpoint + ' ' + checkpoint + '_back')
     return model
 
 def load_np_data(path, chop_time = True, max_size = -1, visualize = False, max_test = True, shuffle = False):
@@ -680,6 +673,55 @@ def fit_generator_from_gan(gan_model, demo_data, path, size = 10000, skip_fit = 
 
     return gan_model, gen_predicted_data
 
+def visualize(X, Y, size = 10):
+    if len(X.shape) == 3:
+        for cnt in range(size):
+            index = np.random.randint(X.shape[0])
+            visualize_script(X[index], Y[index])
+    elif len(X.shape) == 2:
+        visualize_script(X, Y)
+
+        
+def merge_translated(predicted_data, affine_train, prev_merged_data):
+    __MULTI_FACTOR__ = 2
+    X_arr = predicted_data[0]
+    Y_arr = predicted_data[1]
+
+    translation_X = []
+    translation_Y = []
+    for index in range(X_arr.shape[0]):
+        X = np.copy(X_arr[index])
+        Y = Y_arr[index]
+        translation_X.append(X)
+        translation_Y.append(0.)
+
+        dest = X[0,:]
+        #visualize_script(X, dist = Y)
+
+        for cnt in range(__MULTI_FACTOR__):
+            into_index = np.random.randint(affine_train.shape[0])
+
+            X = np.copy(affine_train[into_index])
+
+            source = X[0,:]
+
+            affine_X = X
+            affine_X -= source
+            affine_X += dest
+            #visualize_script(affine_X, dist = "translated")
+            affine_X = np.copy(affine_X)
+    
+            translation_X.append(affine_X)
+            translation_Y.append(1.0)
+
+    translation_X = np.array(translation_X)
+    translation_Y = np.array(translation_Y).reshape(-1,1)
+
+    translation_data = [ translation_X, translation_Y ]
+    data = merge_data(translation_data, prev_merged_data)
+    #visualize(data[0], data[1])
+    return data
+    
 def translate_and_merge(affine_train, gen_predicted_data, train_data):
     __MULTI_FACTOR__ = 1
     gen_X = gen_predicted_data[0]
@@ -785,7 +827,7 @@ def save_sample_figures(scripts, save_path, prefix = "sample_fig", size = args.s
             if max_size == 0:
                 break
 
-def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iterations = 0, path = args.__GAN_FOLDER__, save_samples_folder = args.__FIG_FOLDER__):
+def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iterations = 0):
     print 
     print 
     print 
@@ -793,7 +835,7 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
 
     print "\n\n-------- create_GAN  ----------\n\n"
 
-    batch = args.batch * 10
+    batch = args.batch
     if deco is None:
         deco = HW_Decoder()
     else:
@@ -816,48 +858,82 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
     save_num = args.save_fig_num
     
     prefix = "Test_Demo"
-    save_sample_figures(affine_test, save_samples_folder, prefix)
+    save_sample_figures(affine_test, args.save_fig_folder, prefix)
 
+    merged_data = None
     for itera in range(iterations):
         x_train = affine_train
 
         x_batch = x_train[np.random.randint(0, x_train.shape[0], batch)]
 
-        random_seeds = rand_seeds(batch)
+        if itera % 2 == 0:
+            random_seeds = rand_seeds(batch)
+        else:
+            random_seeds = x_batch[:,:1,:] # TODO
         train_predicted_scripts = gan.predict_scripts(random_seeds)
 
         if (itera % save_freq == 0) and False:
             prefix = "Train_Predicted_In_Iteration_" + str(itera)
-            save_sample_figures(predicted_scripts, save_samples_folder, prefix)
+            save_sample_figures(predicted_scripts, args.save_fig_folder, prefix)
 
         #print "gan.discriminator._collected_trainable_weights" + str([x.name for x in gan.discriminator._collected_trainable_weights])
-        d_loss_real = gan.discriminator.train_on_batch(x_batch, real)
-        d_loss_fake = gan.discriminator.train_on_batch(train_predicted_scripts, fake)
+        if merged_data is None:
+            predicted_data = [train_predicted_scripts, fake + 0.5]
+            merged_data = predicted_data
+        else:
+            predicted_data = [train_predicted_scripts, fake + 0.2]
+            merged_data = sample_from(merged_data, batch)
+        merged_data = merge_translated(predicted_data, affine_train, merged_data)
+        for j in range(args.epochs):
+            sampled_indices = np.random.randint(0, merged_data[0].shape[0], batch)
+            sampled_history_x_batch = merged_data[0][sampled_indices]
+            sampled_history_y_batch = merged_data[1][sampled_indices]
+            gan.discriminator.train_on_batch(sampled_history_x_batch, sampled_history_y_batch) #TODO
+            #visualize(sampled_history_x_batch, sampled_history_y_batch, 10)
+            
+            gan.discriminator.train_on_batch(affine_test, np.ones ((affine_test.shape[0], 1))) #TODO
+            d_train_real = gan.discriminator.train_on_batch(x_batch, real)
+            #visualize(x_batch, real)
+            d_train_fake = gan.discriminator.train_on_batch(train_predicted_scripts, fake)
+            #visualize(train_predicted_scripts, fake)
 
-        random_seeds = rand_seeds(batch)
-        #print "gan.combined._collected_trainable_weights" + str([x.name for x in gan.combined._collected_trainable_weights])
-        g_loss = gan.combined.train_on_batch(random_seeds, real)
+        g_train = gan.combined.train_on_batch(random_seeds, real)
+        for j in range(args.epochs):
+            random_seeds = rand_seeds(batch)
+            #for k in range(10):
+            g_train = gan.combined.train_on_batch(random_seeds, real)
 
-        print gan.discriminator.metrics_names
-        print gan.combined.metrics_names
+        #print gan.discriminator.metrics_names
+        #print gan.combined.metrics_names
 
-        if save_samples_folder and (itera % save_freq == 0):
-            print "\n\n-------- predicting using seeds  ----------\n\n"
+        log_file_name = args.output_dir + args.save_fig_folder + '/' + args.save_fig_name +'.txt'
+        if itera == 0:
+            header = '//itera' + ', d_train' + str(gan.discriminator.metrics_names) + ', g_train' + str(gan.combined.metrics_names) + ', d_eval' + str(gan.discriminator.metrics_names) + ', g_eval' + str(gan.combined.metrics_names) + ', traj_eval_MSE' + '//batch %d' % (batch)
+            print header
+            os.system('echo ' + header + ' > ' + log_file_name)
+
+        if args.save_fig_folder and (itera % save_freq == 0):
+            #print "\n\n-------- predicting test using seeds  ----------\n\n"
+
             affine_test_seeds = affine_test[:,:1,:]
             
             groudtruth_scripts = affine_test[:,:,:]
             predicted_scripts  = gan.predict_scripts(affine_test_seeds)
 
-            g_eval_MSE = ((groudtruth_scripts - predicted_scripts) ** 2).mean()
+            traj_eval_MSE = ((groudtruth_scripts - predicted_scripts) ** 2).mean()
+
+            d_eval = gan.discriminator.evaluate(affine_test, np.ones ((affine_test.shape[0], 1)))
+            g_eval = gan.combined.evaluate(affine_test_seeds, np.ones ((affine_test.shape[0], 1)))
 
             print "\n\n-------- saving samples of prediction to disk  ----------\n\n"
             prefix = "Test_Predicted_In_Iteration_" + str(itera)
-            save_sample_figures(predicted_scripts, save_samples_folder, prefix)
+            save_sample_figures(predicted_scripts, args.save_fig_folder, prefix)
 
-
-            log = "iteration %d \t d_loss_real %r \t d_loss_fake %r \t g_loss %r \t g_eval_MSE %r" %(itera, d_loss_real, d_loss_fake, g_loss, g_eval_MSE)
+            d_train = (np.array(d_train_real) + np.array(d_train_fake))/2
+            log = "%d \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r" %(itera, d_train[0], d_train[1], g_train[0], g_train[1], d_eval[0], d_eval[1], g_eval[0], g_eval[1], traj_eval_MSE)
+            os.system('echo ' + log + ' >> ' + log_file_name)
             print log
-            os.system('echo ' + log + ' >> ' + args.output_dir + save_samples_folder + '/gan_fit_history.txt')
+            print "dtrain %r gtrain %r geval %r" % (d_train[1], g_train[1], g_eval[1])
 
     #prefix = "posdisc_iter_" + str(iteration)
 
@@ -880,7 +956,7 @@ def main():
         print "\n\n-------- train GAN  ----------\n\n"
         deco = deco_pack[2]
         disc = disc_pack[2]
-        gan_obj = train_GAN(deco, disc, train_data = train, test_data = test, affine_train = affine_train, affine_test = affine_test, iterations = args.itera, path = args.output_dir + args.__GAN_FOLDER__)
+        gan_obj = train_GAN(deco, disc, train_data = train, test_data = test, affine_train = affine_train, affine_test = affine_test, iterations = args.itera)
 
     else:
         print "\n\n-------- create_and_fit_discriminator  ----------\n\n"
