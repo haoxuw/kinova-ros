@@ -62,7 +62,7 @@ def HW_Disc_Dense():
     __NAME__ = args.__DISC_MODEL_NAME__
     __NAME_PREFIX__ = __NAME__ + "_"
  
-    dense_shape = np.array([32,128,512,1024,32])
+    dense_shape = np.array([32,128,1024,512,32])
     #dense_shape = np.array([12,256,1024,512]) v1
 
     __FILTER_SIZE__ = 7
@@ -98,12 +98,13 @@ def HW_Disc_Dense():
         activation= keras.layers.LeakyReLU(alpha=0.4,
                                            name = __NAME_PREFIX__+ 'act_1_%d_x_%d' %(filters, j) )
 
-        x = keras.layers.Conv1D(filters,
+        x1 = keras.layers.Conv1D(filters,
                                 filter_size, activation='linear',
                                 padding = 'same',
-                                kernel_regularizer=regularizers.l2(0.01),
+                                kernel_regularizer=regularizers.l2(0.001),
                                 #activity_regularizer=regularizers.l1(0.0001),
                                 name = __NAME_PREFIX__+ 'cv1_1_%d_x_%d' %(filters, j) )(x)
+        x = keras.layers.Add(name = __NAME_PREFIX__+ 'add_num_%d' % (j))([x1, x1])
         x = activation(x)
         
         x = keras.layers.MaxPooling1D(name = __NAME_PREFIX__+ 'maxpool_num_%d' % (j), pool_size = 2)(x)
@@ -883,25 +884,26 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
         else:
             predicted_data = [train_predicted_scripts, fake]
             merged_data = sample_from(merged_data, batch)
-            merged_data = merge_translated(predicted_data, affine_train, merged_data)
+        merged_data = merge_translated(predicted_data, affine_train, merged_data)
         for j in range(args.epochs):
             sampled_indices = np.random.randint(0, merged_data[0].shape[0], batch)
             sampled_history_x_batch = merged_data[0][sampled_indices]
             sampled_history_y_batch = merged_data[1][sampled_indices]
-            gan.discriminator.train_on_batch(sampled_history_x_batch, sampled_history_y_batch) #TODO
+            d_train = gan.discriminator.train_on_batch(sampled_history_x_batch, sampled_history_y_batch) #TODO
             #visualize(sampled_history_x_batch, sampled_history_y_batch, 10)
             
-            gan.discriminator.train_on_batch(affine_test, np.ones ((affine_test.shape[0], 1))) #TODO
-            d_train_real = gan.discriminator.train_on_batch(x_batch, real)
+            #d_loss = gan.discriminator.train_on_batch(affine_test, np.ones ((affine_test.shape[0], 1))) #TODO
+            #d_train_real = gan.discriminator.train_on_batch(x_batch, real)
             #visualize(x_batch, real)
-            d_train_fake = gan.discriminator.train_on_batch(train_predicted_scripts, fake)
+            #d_train_fake = gan.discriminator.train_on_batch(train_predicted_scripts, fake)
             #visualize(train_predicted_scripts, fake)
+            print d_train
 
         g_train = gan.combined.train_on_batch(random_seeds, real)
         for j in range(args.epochs):
             random_seeds = rand_seeds(batch)
-            #for k in range(10):
-            g_train = gan.combined.train_on_batch(random_seeds, real)
+            for k in range(10):
+                g_train = gan.combined.train_on_batch(random_seeds, real)
 
         #print gan.discriminator.metrics_names
         #print gan.combined.metrics_names
@@ -929,7 +931,7 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
             prefix = "Test_Predicted_In_Iteration_" + str(itera)
             save_sample_figures(predicted_scripts, args.save_fig_folder, prefix)
 
-            d_train = (np.array(d_train_real) + np.array(d_train_fake))/2
+            #d_train = (np.array(d_train_real) + np.array(d_train_fake))/2
             log = "%d \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r" %(itera, d_train[0], d_train[1], g_train[0], g_train[1], d_eval[0], d_eval[1], g_eval[0], g_eval[1], traj_eval_MSE)
             os.system('echo ' + log + ' >> ' + log_file_name)
             print log
