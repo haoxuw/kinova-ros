@@ -62,7 +62,7 @@ def HW_Disc_Dense():
     __NAME__ = args.__DISC_MODEL_NAME__
     __NAME_PREFIX__ = __NAME__ + "_"
  
-    dense_shape = np.array([12,32,128,256,32])
+    dense_shape = np.array([32,128,512,1024,32])
     #dense_shape = np.array([12,256,1024,512]) v1
 
     __FILTER_SIZE__ = 7
@@ -693,7 +693,7 @@ def merge_translated(predicted_data, affine_train, prev_merged_data):
         X = np.copy(X_arr[index])
         Y = Y_arr[index]
         translation_X.append(X)
-        translation_Y.append(0.)
+        translation_Y.append(Y)
 
         dest = X[0,:]
         #visualize_script(X, dist = Y)
@@ -878,12 +878,12 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
 
         #print "gan.discriminator._collected_trainable_weights" + str([x.name for x in gan.discriminator._collected_trainable_weights])
         if merged_data is None:
-            predicted_data = [train_predicted_scripts, fake + 0.5]
+            predicted_data = [train_predicted_scripts, fake + 0.3]
             merged_data = predicted_data
         else:
-            predicted_data = [train_predicted_scripts, fake + 0.2]
+            predicted_data = [train_predicted_scripts, fake]
             merged_data = sample_from(merged_data, batch)
-        merged_data = merge_translated(predicted_data, affine_train, merged_data)
+            merged_data = merge_translated(predicted_data, affine_train, merged_data)
         for j in range(args.epochs):
             sampled_indices = np.random.randint(0, merged_data[0].shape[0], batch)
             sampled_history_x_batch = merged_data[0][sampled_indices]
