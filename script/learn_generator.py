@@ -42,13 +42,22 @@ class IM_GAN():
         loss = frozen(script)
 
         self.combined = keras.Model(seed, loss)
-        self.combined.compile(loss='MSE',
+        loss = 'MSE'
+        #loss = 'binary_crossentropy' #TODO
+        self.combined.compile(loss=loss,
                               optimizer=self.opti,
                               metrics=['MAE'])
         
-        #self.combined.build([4,1,6])
-        #print self.discriminator.summary()
-        #print self.combined.summary()
+        keras.utils.plot_model(
+            self.combined,
+            to_file=self.combined.name + '.png',
+            show_shapes=True,
+            show_layer_names=True,
+            rankdir='TB',
+            expand_nested=False,
+            dpi=96
+        )
+        return
 
 
     def predict_scripts(self, seeds):
@@ -57,6 +66,107 @@ class IM_GAN():
         scripts = scripts.reshape(seeds.shape[0], 64, 6)
 
         return scripts
+
+__HISTORY__ = 5
+class IM_BC():
+    def __init__(self):
+        self.history = __HISTORY__
+        self.model = HW_BC_feedforward(self.history)
+
+        self.opti = keras.optimizers.Adam(0.0002, 0.5)
+        loss = 'MSE'
+        self.model.compile(loss=loss,
+                           optimizer=self.opti,
+                           metrics=['MAE'])
+        
+        keras.utils.plot_model(
+            self.model,
+            to_file=self.model.name + '.png',
+            show_shapes=True,
+            show_layer_names=True,
+            rankdir='TB',
+            expand_nested=False,
+            dpi=96
+        )
+
+    def extract_state_action(self, trajs):
+        data_X = []
+        data_Y = []
+
+        for traj in trajs:
+            for index in range(len(traj)):
+                X = []
+                Y = []
+                current = index - self.history
+                for i in range(self.history):
+                    if current + i < 0:
+                        X.append ( traj[0] )
+                    else:
+                        X.append ( traj[current + i] )
+                if index < len(traj) - 1:
+                    if_exit = 0
+                else:
+                    if_exit = 1
+                Y.append ( np.append(traj[index], if_exit) )
+                data_X.append(X)
+                data_Y.append(Y)
+
+        data_X = np.array(data_X)
+        data_Y = np.array(data_Y)
+
+        return data_X, data_Y
+
+def infer_traj(model, seeds, max_len = 100):
+
+    trajs = []
+    for seed in seeds:
+        traj = []
+        seed = seed.reshape( [1, 1, 6] )
+        seed = np.concatenate([seed] * __HISTORY__, axis = 1)
+        print seed.shape
+
+        Y = []
+    
+        for i in range(max_len):
+            x = seed
+            y = model.predict(seed)
+
+            traj.append ( y[0,0,:6] )
+
+            if y[0,0,6] > 0.5:
+                break
+
+        trajs.append( np.array(traj) )
+    trajs = np.array(trajs)
+    print trajs.shape
+    return trajs
+
+        
+def HW_BC_feedforward(history_len):
+    __NAME__ = args.__BC_MODEL_NAME__
+    __NAME_PREFIX__ = __NAME__ + "_"
+    
+    entry = keras.layers.Input(shape=(history_len,6), name = __NAME_PREFIX__ + "entry")
+    dense_shape = np.array([64,128,1024,512,32])
+
+    x = entry
+    x = keras.layers.Flatten(name = __NAME_PREFIX__ + "flatten")(x)
+
+    for j in range(len(dense_shape)):
+        filters = dense_shape[j]
+        activation = 'relu'
+        x = keras.layers.Dense(filters, activation=activation, name = __NAME_PREFIX__ + "dense_" + str(j) )(x)
+
+    activation = 'sigmoid'
+    x = keras.layers.Dense(7, activation=activation, name = __NAME_PREFIX__ + "dense_last" )(x)
+
+    exit = keras.layers.Reshape((1,7), name = __NAME_PREFIX__ + "exit")(x)
+
+    model = keras.Model(inputs=entry, outputs=exit, name= __NAME__)
+
+    print model.summary()
+
+    return model
 
 def HW_Disc_Dense():
     __NAME__ = args.__DISC_MODEL_NAME__
@@ -91,22 +201,24 @@ def HW_Disc_Dense():
 
         return x
 
-    def add_disc_repetition_unit_v3(x, ori_x, filters, j):
+    def add_disc_repetition_unit_v3(x, seed_x, filters, j):
         filter_size = __FILTER_SIZE__
         factor = 2
 
         activation= keras.layers.LeakyReLU(alpha=0.4,
                                            name = __NAME_PREFIX__+ 'act_1_%d_x_%d' %(filters, j) )
 
-        x1 = keras.layers.Conv1D(filters,
+        ori_x = x
+        
+        x = keras.layers.Conv1D(filters,
                                 filter_size, activation='linear',
                                 padding = 'same',
                                 kernel_regularizer=regularizers.l2(0.001),
                                 #activity_regularizer=regularizers.l1(0.0001),
                                 name = __NAME_PREFIX__+ 'cv1_1_%d_x_%d' %(filters, j) )(x)
-        x = keras.layers.Add(name = __NAME_PREFIX__+ 'add_num_%d' % (j))([x1, x1])
-        x = activation(x)
         
+        x = activation(x)
+
         x = keras.layers.MaxPooling1D(name = __NAME_PREFIX__+ 'maxpool_num_%d' % (j), pool_size = 2)(x)
 
         x = keras.layers.Dropout(name = __NAME_PREFIX__+ 'dropout_num_%d' %(j), rate = 0.2)(x)
@@ -510,35 +622,6 @@ def create_and_fit_discriminator(train, test, path):
     return model
 
 
-def HW_gan_Minimal_GAN(decoder_pack, discriminator_pack):
-    __NAME__ = args.__GAN_MODEL_NAME__
-    __NAME_PREFIX__ = __NAME__ + "_"
-
-    __FILTER_SIZE__ = 9
-
-    __DECONV_SHAPE__ = [32, 64, 128, 256, 512, 512, 1024, 2048]
-    __DENSE_SHAPE__ = [32]
-
-    seed = keras.layers.Input(shape=(1,6), name = __NAME_PREFIX__ + "entry")
-    x = seed
-
-    [deco_entry, deco_exit, deco_model] = decoder_pack
-    [disc_entry, disc_exit, disc_model] = discriminator_pack
-
-    deco_model.trainable = True
-    disc_model.trainable = False
-
-    x = deco_model(x)
-
-    script = x
-
-    x = disc_model(x)
-    disc_loss = keras.layers.Reshape([1], name = __NAME_PREFIX__ + "exit" )(x)
-
-    gan_model = keras.Model(inputs=seed, outputs=[disc_loss, script] , name= args.__GAN_MODEL_NAME__)
-
-    return gan_model
-
 def find_entry_exit(model, entry = "entry", exit = "exit"):
     model_pack = [None, None, model]
     for layer in model.layers:
@@ -548,25 +631,6 @@ def find_entry_exit(model, entry = "entry", exit = "exit"):
             model_pack[1] = layer
 
     return model_pack
-
-
-def create_GAN(decoder_pack, discriminator_pack):
-    print "\n\n-------- create GAN  ----------\n\n"
-
-    model = HW_gan_Minimal_GAN(decoder_pack = decoder_pack, discriminator_pack = discriminator_pack)
-    model = recompile (model)
-
-    keras.utils.plot_model(
-        model,
-        to_file=model.name + '.png',
-        show_shapes=True,
-        show_layer_names=True,
-        rankdir='TB',
-        expand_nested=False,
-        dpi=96
-    )
-    
-    return model
 
 
 def extract_gene_from_gan(model_name, new_model_name):
@@ -633,13 +697,23 @@ def rand_seeds(size = 10000):
 
 def create_and_fit_decoder(affine_train, affine_test, path):
     deco_model = create_decoder([None,1,affine_train.shape[-1]])
-
-    affine_data_train = [affine_train[:,0:1,:], affine_train]
+    size = 3
+    affine_data_train = [affine_train[:size,0:1,:], affine_train[:size]]
     affine_data_test = [affine_test[:,0:1,:], affine_test]
 
-    fit_and_save_model(deco_model, affine_data_train, affine_data_test, path, epochs = args.epochs, visualize_train = False, visualize_pred = False)
+    fit_and_save_model(deco_model, affine_data_train, affine_data_test, path, epochs = 1, visualize_train = False, visualize_pred = False)
 
     return deco_model
+
+def create_and_fit_bc(affine_train, affine_test, path):
+    bc = IM_BC()
+
+    train = bc.extract_state_action(affine_train)
+    test = bc.extract_state_action(affine_test)
+
+    fit_and_save_model(bc.model, train, test, path, epochs = args.epochs, visualize_train = False, visualize_pred = False)
+
+    return bc.model
         
 def fit_generator_from_gan(gan_model, demo_data, path, size = 10000, skip_fit = False):
     print
@@ -674,12 +748,20 @@ def fit_generator_from_gan(gan_model, demo_data, path, size = 10000, skip_fit = 
 
     return gan_model, gen_predicted_data
 
-def visualize(X, Y, size = 10):
+def visualize(X, Y = None, size = 10):
     if len(X.shape) == 3:
         for cnt in range(size):
             index = np.random.randint(X.shape[0])
-            visualize_script(X[index], Y[index])
+            if Y is None:
+                y = None
+            else:
+                y = Y[index]
+            visualize_script(X[index], y)
     elif len(X.shape) == 2:
+        if Y is None:
+            Y = None
+        else:
+            Y = Y
         visualize_script(X, Y)
 
         
@@ -880,30 +962,38 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
 
         #print "gan.discriminator._collected_trainable_weights" + str([x.name for x in gan.discriminator._collected_trainable_weights])
         if merged_data is None:
-            predicted_data = [train_predicted_scripts, fake + 0.3]
+            predicted_data = [train_predicted_scripts, fake]
             merged_data = predicted_data
         else:
             predicted_data = [train_predicted_scripts, fake]
             merged_data = sample_from(merged_data, batch)
         merged_data = merge_translated(predicted_data, affine_train, merged_data)
-        for j in range(args.epochs):
-            sampled_indices = np.random.randint(0, merged_data[0].shape[0], batch)
-            sampled_history_x_batch = merged_data[0][sampled_indices]
-            sampled_history_y_batch = merged_data[1][sampled_indices]
+
+
+        #for j in range(args.epochs):
+            #sampled_indices = np.random.randint(0, merged_data[0].shape[0], batch)
+            #sampled_history_x_batch = merged_data[0][sampled_indices]
+            #sampled_history_y_batch = merged_data[1][sampled_indices]
             #d_train = gan.discriminator.train_on_batch(sampled_history_x_batch, sampled_history_y_batch) #TODO
             #visualize(sampled_history_x_batch, sampled_history_y_batch, 10)
             
             #d_loss = gan.discriminator.train_on_batch(affine_test, np.ones ((affine_test.shape[0], 1))) #TODO
+
+
+        for j in range(args.epochs):
             d_train_real = gan.discriminator.train_on_batch(x_batch, real)
             #visualize(x_batch, real)
-            d_train_fake = gan.discriminator.train_on_batch(train_predicted_scripts, fake + 0.3)
+            d_train_fake = gan.discriminator.train_on_batch(train_predicted_scripts, fake)
             #visualize(train_predicted_scripts, fake)
             d_train = (np.array(d_train_real) + np.array(d_train_fake))/2
             print d_train
 
         g_train = gan.combined.train_on_batch(random_seeds, real)
-        for j in range(args.epochs):
-            random_seeds = rand_seeds(batch)
+        for j in range(args.epochs*10):
+            if itera % 2 == 0:
+                random_seeds = rand_seeds(batch)
+            else:
+                random_seeds = x_batch[:,:1,:] # TODO
             g_train = gan.combined.train_on_batch(random_seeds, real)
 
         #print gan.discriminator.metrics_names
@@ -960,12 +1050,19 @@ def main():
         disc = disc_pack[2]
         gan_obj = train_GAN(deco, disc, train_data = train, test_data = test, affine_train = affine_train, affine_test = affine_test, iterations = args.itera)
 
-    else:
+    elif args.init_gan:
         print "\n\n-------- create_and_fit_discriminator  ----------\n\n"
         create_and_fit_discriminator(train = train, test = test, path = args.output_dir + args.__DISC_FOLDER__)
 
         print "\n\n-------- create_and_fit_decoder  ----------\n\n"
         create_and_fit_decoder (affine_train = affine_train, affine_test = affine_test, path = args.output_dir + args.__DECO_FOLDER__)
+    elif args.train_bc:
+        bc_model = create_and_fit_bc (affine_train = affine_train, affine_test = affine_test, path = args.output_dir + args.__BC_FOLDER__)
+
+        trajs = infer_traj(bc_model, affine_test[:,:1])
+        visualize(trajs)
+    elif args.run_bc:
+        bc_pack = load_model_pack(path = args.output_dir + args.__BC_FOLDER__, model_name = args.__BC_MODEL_NAME__, entry = args.__BC_MODEL_NAME__ + "_entry", exit = args.__BC_MODEL_NAME__ + "_exit")
 
     return
     

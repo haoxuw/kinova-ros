@@ -80,7 +80,7 @@ def add_time_axis(script):
 def visualize_script(script, dist = None, filename = None, dequant = True, write_traj = False):
     script = np.copy(script)
 
-    if (script.shape == (64,6)):
+    if (script.shape[1] == 6):
         script = add_time_axis(script)
 
     if dequant:
@@ -107,7 +107,9 @@ def visualize_script(script, dist = None, filename = None, dequant = True, write
     fig = plt.figure()
 
     title = 'Trajectory'
-    if type(dist) == np.ndarray:
+    if dist is None:
+        pass
+    elif type(dist) == np.ndarray:
         title += ' -- (Score: %2.4f)' % dist[0]
     elif type(dist) == str:
         title += ' -- ' + dist

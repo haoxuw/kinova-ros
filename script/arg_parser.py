@@ -13,7 +13,10 @@ def argumentParser():
     parser.add_argument('--max_size', type=int, default=100000, help='')
 
     parser.add_argument('--itera', type=int, default=0, help='')
+    parser.add_argument('--init_gan', action="store_true")
     parser.add_argument('--train_gan', action="store_true")
+    parser.add_argument('--train_bc', action="store_true")
+    parser.add_argument('--run_bc', action="store_true")
     parser.add_argument('--view', action="store_true")
 
     parser.add_argument('--save_fig_num', type=int, default=11, help='')
@@ -29,10 +32,12 @@ def argumentParser():
     args.__DISC_MODEL_NAME__ = "hw_Discriminator"
     args.__GAN_MODEL_NAME__  = "hw_GAN"
     args.__AUTO_MODEL_NAME__ = "hw_auto"
+    args.__BC_MODEL_NAME__ = "hw_bc"
     args.__DECO_FOLDER__ = "/NN_model_gene/"
     args.__DISC_FOLDER__ = "/NN_model_disc/"
     args.__GAN_FOLDER__  = "/NN_model_gan/"
     args.__AUTO_FOLDER__ = "/NN_model_auto/"
+    args.__BC_FOLDER__ = "/NN_model_bc/"
 
     args.__FIG_FOLDER__ = "/NN_model_saved_figures/"
 
