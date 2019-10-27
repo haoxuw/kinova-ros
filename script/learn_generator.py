@@ -42,11 +42,10 @@ class IM_GAN():
         loss = frozen(script)
 
         self.combined = keras.Model(seed, loss)
-        loss = 'MSE'
-        #loss = 'binary_crossentropy' #TODO
+        loss = 'binary_crossentropy'
         self.combined.compile(loss=loss,
                               optimizer=self.opti,
-                              metrics=['MAE'])
+                              metrics=['accuracy'])
         
         keras.utils.plot_model(
             self.combined,
@@ -103,6 +102,19 @@ class IM_BC():
                         X.append ( traj[0] )
                     else:
                         X.append ( traj[current + i] )
+
+                X = np.array(X)
+                #print X.shape
+                prev = X[:-1].mean(axis = 0)
+                next = X[-1]
+                #print prev
+                #print next
+                diff = ((prev - next) ** 2).mean()
+                #print diff
+                if diff < 0.01:
+                    continue
+                else:
+                    pass
                 if index < len(traj) - 1:
                     if_exit = 0
                 else:
@@ -114,6 +126,8 @@ class IM_BC():
         data_X = np.array(data_X)
         data_Y = np.array(data_Y)
 
+        print data_X.shape
+
         return data_X, data_Y
 
 def infer_traj(model, seeds, max_len = 100):
@@ -121,24 +135,26 @@ def infer_traj(model, seeds, max_len = 100):
     trajs = []
     for seed in seeds:
         traj = []
-        seed = seed.reshape( [1, 1, 6] )
-        seed = np.concatenate([seed] * __HISTORY__, axis = 1)
-        print seed.shape
+        s = 0
+        seed = seed[s:s+5,:]
+        seed = seed.reshape( [1, __HISTORY__, 6] )
+        print seed
 
         Y = []
     
+        x = seed
         for i in range(max_len):
-            x = seed
-            y = model.predict(seed)
+            y = model.predict(x)
 
             traj.append ( y[0,0,:6] )
 
             if y[0,0,6] > 0.5:
                 break
+            x = np.concatenate( [ x[:,1:], y[:,:,:6] ], axis = 1 )
+            #print traj
 
         trajs.append( np.array(traj) )
     trajs = np.array(trajs)
-    print trajs.shape
     return trajs
 
         
@@ -397,7 +413,8 @@ def fit_and_save_model(model, train, test, model_output_path, save_model = True,
 
     stopping_callback = EarlyStoppingByLossVal(monitor='loss', value=0.001, verbose=1)
 
-    callbacks = [cp_callback, tensorboard_callback, stopping_callback]
+    #callbacks = [cp_callback, tensorboard_callback, stopping_callback]
+    callbacks = [cp_callback, tensorboard_callback]
     #callbacks = [tensorboard_callback, stopping_callback]
 
     batch = args.batch
@@ -748,7 +765,7 @@ def fit_generator_from_gan(gan_model, demo_data, path, size = 10000, skip_fit = 
 
     return gan_model, gen_predicted_data
 
-def visualize(X, Y = None, size = 10):
+def visualize(X, Y = None, size = 10, save_path = None, dequant = False):
     if len(X.shape) == 3:
         for cnt in range(size):
             index = np.random.randint(X.shape[0])
@@ -756,7 +773,12 @@ def visualize(X, Y = None, size = 10):
                 y = None
             else:
                 y = Y[index]
-            visualize_script(X[index], y)
+            if save_path is None:
+                filename = None
+            else:
+                os.system('mkdir -p ' + save_path)
+                filename = save_path + ('/vis_sample_%d.png' % cnt)
+            visualize_script(X[index], y, filename = filename)
     elif len(X.shape) == 2:
         if Y is None:
             Y = None
@@ -898,7 +920,10 @@ def save_sample_figures(scripts, save_path, prefix = "sample_fig", size = args.s
         os.system('mkdir -p ' + path)
 
         total_size = scripts.shape[0]
-        for sample_index in range(0, total_size, (total_size / size + 1)):
+        step = (total_size / args.save_fig_num) - 1
+        if step < 1:
+            step = 1
+        for sample_index in range(0, total_size, step):
             script = scripts[sample_index]
             sample_script = np.copy(script).reshape([64,6])
 
@@ -937,8 +962,7 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
     save_freq = iterations / 100
     if save_freq < 1:
         save_freq = 2
-    save_freq = 100 # overwrite
-    save_num = args.save_fig_num
+    save_freq = 100 # overwrite TODO
     
     prefix = "Test_Demo"
     save_sample_figures(affine_test, args.save_fig_folder, prefix)
@@ -986,7 +1010,7 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
             d_train_fake = gan.discriminator.train_on_batch(train_predicted_scripts, fake)
             #visualize(train_predicted_scripts, fake)
             d_train = (np.array(d_train_real) + np.array(d_train_fake))/2
-            print d_train
+            #print d_train
 
         g_train = gan.combined.train_on_batch(random_seeds, real)
         for j in range(args.epochs*10):
@@ -1024,8 +1048,8 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
 
             log = "%d \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r" %(itera, d_train[0], d_train[1], g_train[0], g_train[1], d_eval[0], d_eval[1], g_eval[0], g_eval[1], traj_eval_MSE)
             os.system('echo ' + log + ' >> ' + log_file_name)
+            print header
             print log
-            print "dtrain %r gtrain %r geval %r" % (d_train[1], g_train[1], g_eval[1])
 
     #prefix = "posdisc_iter_" + str(iteration)
 
@@ -1059,10 +1083,8 @@ def main():
     elif args.train_bc:
         bc_model = create_and_fit_bc (affine_train = affine_train, affine_test = affine_test, path = args.output_dir + args.__BC_FOLDER__)
 
-        trajs = infer_traj(bc_model, affine_test[:,:1])
-        visualize(trajs)
-    elif args.run_bc:
-        bc_pack = load_model_pack(path = args.output_dir + args.__BC_FOLDER__, model_name = args.__BC_MODEL_NAME__, entry = args.__BC_MODEL_NAME__ + "_entry", exit = args.__BC_MODEL_NAME__ + "_exit")
+        trajs = infer_traj(bc_model, affine_test)
+        visualize(trajs, save_path = args.output_dir + args.save_fig_folder, dequant = True)
 
     return
     

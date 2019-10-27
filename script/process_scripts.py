@@ -337,7 +337,12 @@ def dump_np_array(names, dists, scripts, output_path, output_suffix, plot_sample
             #filename = output_path + "%02d_exp" %index
             #visualize_script(scri, filename, dist = "filled", dequant = False)
 
+            if i == 0:
+                affine_arr_traj.append(np.copy(scri))
+                continue
+
             scri = affine_script(scri)
+            affine_arr_traj.append(np.copy(scri))
             #filename = output_path + "%02d_rot" %index
             #visualize_script(scri, filename, dist = "2d_rotated", dequant = False)
             #visualize_script(scri)
@@ -347,8 +352,6 @@ def dump_np_array(names, dists, scripts, output_path, output_suffix, plot_sample
 
             arr_traj.append(np.copy(scri))
             arr_dist.append(np.copy(dist))
-
-            affine_arr_traj.append(np.copy(scri))
 
             for j in range(__MUTATE_MULTIPLIER__):
                 scri_mut = np.copy(scri)
