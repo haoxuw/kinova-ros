@@ -41,7 +41,7 @@ def load_task_file_under_path(path):
   return multi_scripts
 
 
-path = "/home/haoxuw/mcgill/kinova/src/kinova-ros/script/tracked_results/"
-
+#path = "/home/haoxuw/mcgill/kinova/src/kinova-ros/script/tracked_results/"
+path = "/home/haoxuw/mcgill/kinova/src/kinova-ros/script/tracked_pick_place/"
 
 load_task_file_under_path(path);

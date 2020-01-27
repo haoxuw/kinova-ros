@@ -157,11 +157,76 @@ def infer_traj(model, seeds, max_len = 100):
     trajs = np.array(trajs)
     return trajs
 
-        
-def HW_BC_feedforward(history_len):
-    __NAME__ = args.__BC_MODEL_NAME__
+def extract_endpoints(Y):
+    X = np.concatenate([Y[:,:1], Y[:,-1:]], axis = 1)
+    return X
+
+def create_and_fit_ftf(affine_train, affine_test, path):
+    train = [ extract_endpoints(affine_train) , affine_train ]
+    test = [ extract_endpoints(affine_test) , affine_test ]
+    model = HW_full_traj_feedforward()
+    #args.epochs = 1
+    model = fit_and_save_model(model, train, test, path, epochs = args.epochs, visualize_pred = True)
+    print model.summary()
+    #answer = model.predict()
+    return
+
+def HW_full_traj_feedforward():
+    __NAME__ = "Feedforward_Conv_"
     __NAME_PREFIX__ = __NAME__ + "_"
     
+    entry = keras.layers.Input(shape=(2,6), name = __NAME_PREFIX__ + "entry")
+    dense_shape = np.array([16,64,128,128,256])
+
+    x = entry
+    x = keras.layers.Reshape((2,6), name = __NAME_PREFIX__ + "_entry_reshape")(x)
+
+    w = 2
+    for j in range(len(dense_shape)):
+        filters = dense_shape[j] * 2
+        act = 'linear'
+        act = 'tanh'
+        conv = keras.layers.Conv1D(filters,
+                                   filters,
+                                   activation=act,
+                                   padding = 'same',
+                                   kernel_regularizer=regularizers.l2(0.001),
+                                   name = __NAME_PREFIX__+ 'cv1_1_%d_x_%d' %(filters, j) )
+        activation= keras.layers.ReLU(max_value = 6,
+                                      name = __NAME_PREFIX__+ 'act_1_%d_x_%d' %(filters, j) )
+        x = conv(x)
+        x = activation(x)
+        x = keras.layers.Reshape((w,1,filters), name = __NAME_PREFIX__ + "%d_1_reshape"%j)(x)
+        x = keras.backend.resize_images(x, 1, 2, "channels_last")
+        w *= 2
+        x = keras.layers.Reshape((w,filters), name = __NAME_PREFIX__ + "%d_2_reshape"%j)(x)
+
+    activation = 'sigmoid'
+    x = keras.layers.Dense(6, activation=activation, name = __NAME_PREFIX__ + "dense_last" )(x)
+
+    exit = keras.layers.Reshape((64,6), name = __NAME_PREFIX__ + "exit")(x)
+
+    model = keras.Model(inputs=entry, outputs=exit, name= __NAME__)
+
+    #print model.summary()
+
+    model.compile(loss='MSE',
+                  optimizer='adam',
+                  metrics=['MAE'])
+        
+    keras.utils.plot_model(
+        model,
+        to_file=model.name + '.png',
+        show_shapes=False,
+        show_layer_names=False,
+        rankdir='TB',
+        expand_nested=False,
+        dpi=96
+    )
+
+    return model
+
+def HW_BC_feedforward():
     entry = keras.layers.Input(shape=(history_len,6), name = __NAME_PREFIX__ + "entry")
     dense_shape = np.array([64,128,1024,512,32])
 
@@ -181,8 +246,7 @@ def HW_BC_feedforward(history_len):
     model = keras.Model(inputs=entry, outputs=exit, name= __NAME__)
 
     print model.summary()
-
-    return model
+    
 
 def HW_Disc_Dense():
     __NAME__ = args.__DISC_MODEL_NAME__
@@ -427,6 +491,8 @@ def fit_and_save_model(model, train, test, model_output_path, save_model = True,
             y = Y[i]
             visualize_script(x, dist = y)
 
+    print X.shape
+    print Y.shape
     history = model.fit(X, Y, epochs = epochs, batch_size= batch, shuffle=True, validation_split=( args.__TEST_RATIO__), callbacks=callbacks)
 
     val_loss = np.array(history.history['val_loss'])
@@ -457,16 +523,19 @@ def fit_and_save_model(model, train, test, model_output_path, save_model = True,
                 index = np.random.randint(X.shape[0])
                 visualize_script(X[index], dist = "pred: %r" % answer[index][0])
         else:
-            print "visualizing deco prediction"
+            print "visualizing prediction"
             script = answer
-            for cnt in range(20):#range(test[0].shape[0]):
-                index = np.random.randint(X.shape[0])
-                filename = model_output_path + '/decoder_pred_sample_%d.png' % cnt
-                visualize_script(script[index], dist = "Decoder Prediction Example %d" % cnt, filename = filename)
+            print X.shape[0]
+            for cnt in range(X.shape[0]):
+                #index = np.random.randint(X.shape[0])
+                index= cnt
+                filename = model_output_path + '/%02d_pred_sample.png' % cnt
+                visualize_script(script[index], dist = "Prediction" , filename = filename)
 
-                filename = model_output_path + '/decoder_ground_truth_%d.png' % cnt
-                visualize_script(Y[index], dist = "Decoder Ground Truth %d" % cnt, filename = filename)
-
+                filename = model_output_path + '/%02d__ground_truth.png' % cnt
+                visualize_script(Y[index], dist = "Ground Truth", filename = filename)
+                if cnt > 100:
+                    break
         
         return model
 
@@ -967,7 +1036,6 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
     prefix = "Test_Demo"
     save_sample_figures(affine_test, args.save_fig_folder, prefix)
 
-    merged_data = None
     for itera in range(iterations):
         x_train = affine_train
 
@@ -983,25 +1051,6 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
         if (itera % save_freq == 0) and False:
             prefix = "Train_Predicted_In_Iteration_" + str(itera)
             save_sample_figures(predicted_scripts, args.save_fig_folder, prefix)
-
-        #print "gan.discriminator._collected_trainable_weights" + str([x.name for x in gan.discriminator._collected_trainable_weights])
-        if merged_data is None:
-            predicted_data = [train_predicted_scripts, fake]
-            merged_data = predicted_data
-        else:
-            predicted_data = [train_predicted_scripts, fake]
-            merged_data = sample_from(merged_data, batch)
-        merged_data = merge_translated(predicted_data, affine_train, merged_data)
-
-
-        #for j in range(args.epochs):
-            #sampled_indices = np.random.randint(0, merged_data[0].shape[0], batch)
-            #sampled_history_x_batch = merged_data[0][sampled_indices]
-            #sampled_history_y_batch = merged_data[1][sampled_indices]
-            #d_train = gan.discriminator.train_on_batch(sampled_history_x_batch, sampled_history_y_batch) #TODO
-            #visualize(sampled_history_x_batch, sampled_history_y_batch, 10)
-            
-            #d_loss = gan.discriminator.train_on_batch(affine_test, np.ones ((affine_test.shape[0], 1))) #TODO
 
 
         for j in range(args.epochs):
@@ -1061,6 +1110,9 @@ def main():
     print "\n\n-------- loading train/test dataset  ----------\n\n"
     test, train, affine_test, affine_train = load_np_data(args.output_dir, max_size = args.max_size, visualize = False)
     print "\ttrain size %d, affine_train size %d" % (train[0].shape[0], affine_train[0].shape[0])
+
+    #create_and_fit_ftf(affine_train, affine_test, args.output_dir + "FTF", )
+    #return
 
     if args.train_gan:
         print "\n\n-------- load_decoder  ----------\n\n"

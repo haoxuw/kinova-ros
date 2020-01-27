@@ -1,9 +1,11 @@
 import argparse
 def argumentParser():
-    name = "final"
+    name = "pick_place"
+    name = "pouring"
     output_dir = "/home/haoxuw/mcgill/kinova/src/kinova-ros/script/" + name + "_results/"
-    input_dir = "/home/haoxuw/mcgill/kinova/src/kinova-ros/script/tracked_results/"
+    input_dir = "/home/haoxuw/mcgill/kinova/src/kinova-ros/script/tracked_" + name + "/"
     parser = argparse.ArgumentParser(description='')
+    parser.add_argument('--name', type=str, default= name, help='')
     parser.add_argument('--input_dir', type=str, default= input_dir, help='')
     parser.add_argument('--output_dir', type=str, default= output_dir, help='Path to output directory. Might overwrite.')
     parser.add_argument('--epochs', type=int, default=64, help='')

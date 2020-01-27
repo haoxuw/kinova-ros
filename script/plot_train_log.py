@@ -13,6 +13,7 @@ with open(sys.argv[1]) as train_log:
 
     plotting = [[1,3], [5,7], [7,9], [6,8]]
     plotting = [[6,8]]
+    plotting = [[2,4]]
     for i in plotting:
         fig, ax = plt.subplots()
         blue,red = i
@@ -21,7 +22,7 @@ with open(sys.argv[1]) as train_log:
         ax.plot(itera, data[red], 'r', label = legend[red])
         #ax.axis('legend[index]')
         plt.legend(loc='best')
-        plt.xlabel('training iterations')
+        plt.xlabel('Training iterations')
         #plt.ylabel('Cross Entropy Loss')
         plt.ylabel('Accuracy')
         filename = str(i)
