@@ -117,8 +117,8 @@ def visualize_script(script, dist = None, filename = None, dequant = True, write
         title += ' -- (Score: %r)' % dist
     fig.suptitle(title)
 
-    manager = plt.get_current_fig_manager()
-    manager.window.showMaximized()
+    #manager = plt.get_current_fig_manager()
+    #manager.window.showMaximized()
 
     ax = fig.gca(projection='3d')
     ax.view_init(elev=20, azim=100)

@@ -17,6 +17,8 @@ def argumentParser():
     parser.add_argument('--itera', type=int, default=0, help='')
     parser.add_argument('--init_gan', action="store_true")
     parser.add_argument('--train_gan', action="store_true")
+    parser.add_argument('--state_to_state', action="store_true")
+    parser.add_argument('--state_history', type=int, default=5, help='')
     parser.add_argument('--train_bc', action="store_true")
     parser.add_argument('--run_bc', action="store_true")
     parser.add_argument('--view', action="store_true")

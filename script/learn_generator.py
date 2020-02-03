@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import gc
 
 from process_scripts import *
@@ -15,14 +17,12 @@ from keras import regularizers
 
 
 
-
 class IM_GAN():
     def __init__(self, gene_model, disc_model):
         __NAME__ = args.__GAN_MODEL_NAME__
         __NAME_PREFIX__ = __NAME__ + "_"
 
         self.dims = 6
-        self.lens = 64
 
         self.opti = keras.optimizers.Adam(0.0002, 0.5)
 
@@ -32,7 +32,11 @@ class IM_GAN():
                                    optimizer=self.opti,
                                    metrics=['accuracy'])
 
-        seed = keras.layers.Input(shape=((1, self.dims)), name = __NAME_PREFIX__ + "entry")
+        if args.state_to_state:
+            in_shape = (args.state_history,6)
+        else:
+            in_shape = (1,6)
+        seed = keras.layers.Input(shape=(in_shape), name = __NAME_PREFIX__ + "entry")
         self.generator = gene_model
 
         script = self.generator(seed)
@@ -58,18 +62,67 @@ class IM_GAN():
         )
         return
 
+    def predict(self, seeds):
+        pred = self.generator.predict(seeds)
+        pred = pred.reshape(seeds.shape[0], -1, 6)
+        return pred
 
     def predict_scripts(self, seeds):
-        scripts = self.generator.predict(seeds)
-
-        scripts = scripts.reshape(seeds.shape[0], 64, 6)
+        if args.state_to_state:
+            scripts = infer_traj(self.generator, seeds)
+        else:
+            scripts = self.generator.predict(seeds)
+            scripts = scripts.reshape(seeds.shape[0], 64, 6)
 
         return scripts
 
-__HISTORY__ = 5
+class State_To_State:
+    def __init__(self):
+        self.history = args.state_history
+
+    def extract_state_to_state(self, trajs):
+        data_X = []
+        data_Y = []
+
+        for traj in trajs:
+            for index in range(len(traj)):
+                X = []
+                Y = []
+                current = index - self.history
+                for i in range(self.history):
+                    if current + i < 0:
+                        X.append ( traj[0] )
+                    else:
+                        X.append ( traj[current + i] )
+
+                X = np.array(X)
+                prev = X[:-1].mean(axis = 0)
+                next = X[-1]
+                diff = ((prev - next) ** 2).mean()
+                if diff < 0.01:
+                    continue
+                else:
+                    pass
+                if index < len(traj) - 1:
+                    if_exit = 0
+                else:
+                    if_exit = 1
+                Y.append ( np.append(traj[index], if_exit) )
+                data_X.append(X)
+                data_Y.append(Y)
+
+        data_X = np.array(data_X)
+        data_Y = np.array(data_Y)
+
+        if args.state_to_state:
+            return np.concatenate( [ data_X[:,:,:6], data_Y[:,:,:6] ], axis = 1 )
+        else:
+            return data_X, data_Y
+    
+
 class IM_BC():
     def __init__(self):
-        self.history = __HISTORY__
+        self.history = args.state_history
         self.model = HW_BC_feedforward(self.history)
 
         self.opti = keras.optimizers.Adam(0.0002, 0.5)
@@ -87,58 +140,18 @@ class IM_BC():
             expand_nested=False,
             dpi=96
         )
+    def extract_state_to_state(self, traj):
+        sa = State_To_State()
+        return sa.extract_state_to_state(traj)
 
-    def extract_state_action(self, trajs):
-        data_X = []
-        data_Y = []
-
-        for traj in trajs:
-            for index in range(len(traj)):
-                X = []
-                Y = []
-                current = index - self.history
-                for i in range(self.history):
-                    if current + i < 0:
-                        X.append ( traj[0] )
-                    else:
-                        X.append ( traj[current + i] )
-
-                X = np.array(X)
-                #print X.shape
-                prev = X[:-1].mean(axis = 0)
-                next = X[-1]
-                #print prev
-                #print next
-                diff = ((prev - next) ** 2).mean()
-                #print diff
-                if diff < 0.01:
-                    continue
-                else:
-                    pass
-                if index < len(traj) - 1:
-                    if_exit = 0
-                else:
-                    if_exit = 1
-                Y.append ( np.append(traj[index], if_exit) )
-                data_X.append(X)
-                data_Y.append(Y)
-
-        data_X = np.array(data_X)
-        data_Y = np.array(data_Y)
-
-        print data_X.shape
-
-        return data_X, data_Y
-
-def infer_traj(model, seeds, max_len = 100):
+def infer_traj(model, seeds, max_len = 64):
 
     trajs = []
     for seed in seeds:
         traj = []
-        s = 0
-        seed = seed[s:s+5,:]
-        seed = seed.reshape( [1, __HISTORY__, 6] )
-        print seed
+        # take the first args.state_history points
+        seed = seed[:args.state_history]
+        seed = seed.reshape( [1, args.state_history, -1] )
 
         Y = []
     
@@ -146,16 +159,27 @@ def infer_traj(model, seeds, max_len = 100):
         for i in range(max_len):
             y = model.predict(x)
 
-            traj.append ( y[0,0,:6] )
-
-            if y[0,0,6] > 0.5:
-                break
-            x = np.concatenate( [ x[:,1:], y[:,:,:6] ], axis = 1 )
+            if args.state_to_state:
+                #output is shape (B,6,6)
+                #take the last point
+                traj.append ( y[0,-1,:6] )
+                x = np.concatenate( [ x[:,1:], y[:,-1:,:6] ], axis = 1 )
+            else:
+                #output is shape (B,1,7)
+                traj.append ( y[0,0,:6] )
+                if y[0,0,6] > 0.5:
+                    break
+                x = np.concatenate( [ x[:,1:], y[:,:,:6] ], axis = 1 )
             #print traj
 
         trajs.append( np.array(traj) )
     trajs = np.array(trajs)
     return trajs
+
+def min_MSE(gts, preds):
+    print gts.shape
+    print preds.shape
+    return np.array([np.array([(pred - gt)**2 for gt in gts]).mean(1).mean(1).min() for pred in preds])
 
 def extract_endpoints(Y):
     X = np.concatenate([Y[:,:1], Y[:,-1:]], axis = 1)
@@ -248,7 +272,7 @@ def HW_BC_feedforward():
     print model.summary()
     
 
-def HW_Disc_Dense():
+def HW_Disc_Dense(input_shape):
     __NAME__ = args.__DISC_MODEL_NAME__
     __NAME_PREFIX__ = __NAME__ + "_"
  
@@ -306,12 +330,82 @@ def HW_Disc_Dense():
         return x
 
 
-    entry = keras.layers.Input(shape=(64,6), name = __NAME_PREFIX__ + "entry")
+    entry = keras.layers.Input(shape=input_shape[1:], name = __NAME_PREFIX__ + "entry")
 
     x = entry
 
     v1 = keras.layers.Cropping1D(cropping=([1, 0]), name = __NAME_PREFIX__ + "cropping_v1" )(x)
     v2 = keras.layers.Cropping1D(cropping=([0, 1]), name = __NAME_PREFIX__ + "cropping_v2" )(x)
+    v = keras.layers.Subtract(name = __NAME_PREFIX__+ 'sub_v')([v2,v1])
+
+    x = keras.layers.Concatenate(name = __NAME_PREFIX__+ 'concat_v', axis = 2)([v,v2])
+
+    
+    ori_x = x
+
+    for j in range(len(dense_shape)):
+        filters = dense_shape[j]
+        x = add_disc_repetition_unit_v3(x, ori_x, filters, j)
+
+    x = keras.layers.Flatten(name = __NAME_PREFIX__ + "flatten")(x)
+
+    activation= keras.layers.LeakyReLU(alpha=0.2,
+                                       name = __NAME_PREFIX__+ 'act' )
+
+    x = keras.layers.Dense(1, activation='linear', name = __NAME_PREFIX__ + "shift" )(x)
+
+    x = activation(x)
+
+    exit = keras.layers.Dense(1, activation='sigmoid', name = __NAME_PREFIX__ + "exit" )(x)
+
+    model = keras.Model(inputs=entry, outputs=exit, name= __NAME__)
+
+    print model.summary()
+
+    return model
+
+def HW_Disc_Dense_STS(input_shape):
+    __NAME__ = args.__DISC_MODEL_NAME__
+    __NAME_PREFIX__ = __NAME__ + "_"
+ 
+    dense_shape = np.array([32,64,128,256,64,32])
+
+    __FILTER_SIZE__ = 2
+    
+
+    def add_disc_repetition_unit_v3(x, seed_x, filters, j):
+        filter_size = __FILTER_SIZE__
+        factor = 2
+
+        activation= keras.layers.LeakyReLU(alpha=0.4,
+                                           name = __NAME_PREFIX__+ 'act_1_%d_x_%d' %(filters, j) )
+
+        ori_x = x
+        
+        x = keras.layers.Conv1D(filters,
+                                filter_size, activation='linear',
+                                padding = 'same',
+                                kernel_regularizer=regularizers.l2(0.001),
+                                #activity_regularizer=regularizers.l1(0.0001),
+                                name = __NAME_PREFIX__+ 'cv1_1_%d_x_%d' %(filters, j) )(x)
+        
+        x = activation(x)
+
+        if j%3==0:
+            x = keras.layers.MaxPooling1D(name = __NAME_PREFIX__+ 'maxpool_num_%d' % (j), pool_size = 2)(x)
+
+        x = keras.layers.Dropout(name = __NAME_PREFIX__+ 'dropout_num_%d' %(j), rate = 0.2)(x)
+
+        return x
+
+
+    entry = keras.layers.Input(shape=(args.state_history + 1, 6), name = __NAME_PREFIX__ + "entry")
+
+    x = entry
+
+    v1 = keras.layers.Cropping1D(cropping=([1, 0]), name = __NAME_PREFIX__ + "cropping_v1" )(x)
+    v2 = keras.layers.Cropping1D(cropping=([0, 1]), name = __NAME_PREFIX__ + "cropping_v2" )(x)
+
     v = keras.layers.Subtract(name = __NAME_PREFIX__+ 'sub_v')([v2,v1])
 
     x = keras.layers.Concatenate(name = __NAME_PREFIX__+ 'concat_v', axis = 2)([v,v2])
@@ -380,7 +474,7 @@ def HW_Decoder():
         x52 = keras.layers.Dense(c_size * x_size * y_size, activation=activation, name = __NAME_PREFIX__ + "seed52_%d_num_%d" %(filters, j) )(x51)
         x5 = keras.layers.Reshape([x_size, y_size, c_size])(x52)
 
-        x = keras.layers.Add(name = __NAME_PREFIX__+ 'add_num_%d' %(j))([x1, x2, x3, x5])
+        x = keras.layers.Add(name = __NAME_PREFIX__+ 'add_num_%d' %(j))([x1, x2, x3])
 
         x = keras.layers.Dropout(name = __NAME_PREFIX__+ 'dropout_num_%d' %(j), rate = 0.2)(x)
         return x
@@ -444,6 +538,97 @@ def HW_Decoder():
 
 
 
+def HW_Decoder_STS():
+    __NAME__ = args.__DECO_MODEL_NAME__
+    __NAME_PREFIX__ = __NAME__ + "_"
+
+    __FILTER_SIZE__ = 7
+
+    __SEED_TRANS_NUM__ = 7
+
+    __SHAPE__ = [32, 64, 128, 256]
+
+
+    conv_shape = __SHAPE__
+    deconv_shape = __SHAPE__
+    filter_size = __FILTER_SIZE__
+
+
+
+    def add_repetition_unit_v2(x, seed, filters, j):
+        ori_x = x
+
+        base_layer = keras.layers.Conv2DTranspose(filters, (filter_size, 1), activation=activation, name = __NAME_PREFIX__+ 'deconv1_%d_num_%d' %(filters, j) )
+        x1 = base_layer(x)
+
+        x21 = keras.layers.Conv2DTranspose(filters, (filter_size, 1), activation=activation, padding = 'same', name = __NAME_PREFIX__+ 'deconv21_%d_num_%d' %(filters, j) )(x)
+        x2 = keras.layers.Conv2DTranspose(filters, (filter_size, 1), activation=activation, name = __NAME_PREFIX__+ 'deconv2_%d_num_%d' %(filters, j) )(x21)
+
+        x31 = keras.layers.Conv2DTranspose(filters, (filter_size, 1), activation=activation, padding = 'same', name = __NAME_PREFIX__+ 'deconv31_%d_num_%d' %(filters, j) )(x)
+        x32 = keras.layers.Conv2DTranspose(filters, (filter_size, 1), activation=activation, padding = 'same', name = __NAME_PREFIX__+ 'deconv32_%d_num_%d' %(filters, j) )(x31)
+        x3 = keras.layers.Conv2DTranspose(filters, (filter_size, 1), activation=activation, name = __NAME_PREFIX__+ 'deconv3_%d_num_%d' %(filters, j) )(x32)
+
+        (b_size, x_size, y_size, c_size) = base_layer.output_shape
+
+        x50 = keras.layers.Flatten(name = __NAME_PREFIX__ + "flatten_%d" % j)(x)
+        x51 = keras.layers.Dense(5 * c_size, activation=activation, name = __NAME_PREFIX__ + "seed51_%d_num_%d" %(filters, j) )(x50)
+        x52 = keras.layers.Dense(c_size * x_size * y_size, activation=activation, name = __NAME_PREFIX__ + "seed52_%d_num_%d" %(filters, j) )(x51)
+        x5 = keras.layers.Reshape([x_size, y_size, c_size])(x52)
+
+        x = keras.layers.Add(name = __NAME_PREFIX__+ 'add_num_%d' %(j))([x1, x2, x3])
+
+        x = keras.layers.Dropout(name = __NAME_PREFIX__+ 'dropout_num_%d' %(j), rate = 0.2)(x)
+        return x
+
+
+
+
+
+
+    seed = keras.layers.Input(shape=[args.state_history,6], name = __NAME_PREFIX__ + "entry")
+
+    stride = 1
+    padding = 0
+    activation = 'relu'
+    activation = 'tanh'
+
+    seed_trans_num = __SEED_TRANS_NUM__
+
+    last_layer_x = args.state_history + 1
+
+    seed2d = keras.layers.Reshape((args.state_history,1,6), name = __NAME_PREFIX__ + "seed2d")(seed)
+
+    start = seed2d
+    x = start
+    for i in range(seed_trans_num):
+        x = keras.layers.Dense(6, activation=activation, name = __NAME_PREFIX__ + "dense_start_num_%d" %(i) )(x)
+
+    x = keras.layers.Conv2DTranspose(6, (last_layer_x, 1), activation='sigmoid', name = __NAME_PREFIX__+ 'deconv_first' )(x)
+
+    for j, filters in enumerate(conv_shape):
+        x = add_repetition_unit_v2(x, seed2d, filters, j)
+
+
+    x = keras.layers.Conv2DTranspose(6, (filter_size, 1), activation=activation, name = __NAME_PREFIX__+ 'deconv_last_layer' )(x)
+
+    for j in range(5):
+        x = keras.layers.Conv2D(6, (filter_size,1), activation=activation, padding = 'valid', name = __NAME_PREFIX__+ 'downgrade_x_%d' %(j) )(x)
+    x = keras.layers.AveragePooling2D((10,1), name = __NAME_PREFIX__+ 'downgrade_avg' )(x)
+
+    x = keras.layers.Concatenate(axis = 1)([ start , x])
+
+    x = keras.layers.Reshape((args.state_history + 1,6), name = args.__DECO_MODEL_NAME__ + "_exit")(x)
+
+    exit = x
+
+    model = keras.Model(inputs=seed, outputs=exit , name= __NAME__)
+
+    print model.summary()
+
+    return model
+
+
+
 
 class EarlyStoppingByLossVal(keras.callbacks.Callback):
     def __init__(self, monitor='loss', value=0.00001, verbose=0):
@@ -491,8 +676,6 @@ def fit_and_save_model(model, train, test, model_output_path, save_model = True,
             y = Y[i]
             visualize_script(x, dist = y)
 
-    print X.shape
-    print Y.shape
     history = model.fit(X, Y, epochs = epochs, batch_size= batch, shuffle=True, validation_split=( args.__TEST_RATIO__), callbacks=callbacks)
 
     val_loss = np.array(history.history['val_loss'])
@@ -515,7 +698,6 @@ def fit_and_save_model(model, train, test, model_output_path, save_model = True,
     if visualize_pred:
         answer = model.predict(X)
 
-        print answer.shape
         if X.shape[1:] == [64,6]:
             #script = answer[1] # [loss, script]
             print "visualizing discri prediction"
@@ -525,7 +707,6 @@ def fit_and_save_model(model, train, test, model_output_path, save_model = True,
         else:
             print "visualizing prediction"
             script = answer
-            print X.shape[0]
             for cnt in range(X.shape[0]):
                 #index = np.random.randint(X.shape[0])
                 index= cnt
@@ -653,8 +834,12 @@ def load_np_data(path, chop_time = True, max_size = -1, visualize = False, max_t
     return test, train, affine_test, affine_train
 
 def create_decoder(input_shape):
-    model = HW_Decoder()
-
+    if args.state_to_state:
+        model = HW_Decoder_STS()
+        input_shape = (args.state_history, 6)
+    else:
+        model = HW_Decoder()
+        
     model.compile(optimizer = 'adam',
                   loss='MSE',
                   metrics=['MAE']
@@ -675,9 +860,11 @@ def create_decoder(input_shape):
 
 
 def create_discriminator(input_shape):
-    model = HW_Disc_Dense()
-
-    
+    if args.state_to_state:
+        model = HW_Disc_Dense_STS(input_shape)
+    else:
+        model = HW_Disc_Dense(input_shape)
+        
     model.compile(optimizer='adam',
                   loss='binary_crossentropy',
                   metrics=['accuracy']
@@ -697,13 +884,17 @@ def create_discriminator(input_shape):
     
     return model
 
-def create_and_fit_discriminator(train, test, path):
+def create_and_fit_discriminator(affine_train, affine_test, train, test, path):
 
-    print "shuffle pool %r" % (train[0].shape[0]*2)
-    #train_ds = tf.data.Dataset.from_tensor_slices(train).shuffle(train[0].shape[0]*2).batch(__BATCH__)
-    #test_ds = tf.data.Dataset.from_tensor_slices(test).batch(__BATCH__)
-
+    if args.state_to_state:
+        train = [
+            np.zeros([args.batch, args.state_history + 1, 6]),
+            np.zeros([args.batch, 1])
+        ]
+        test = None
     model = create_discriminator(train[0].shape)
+
+    # pretrain with jump start data
     fit_and_save_model(model, train, test, path, epochs = args.epochs, visualize_train = False)
     return model
 
@@ -782,11 +973,20 @@ def rand_seeds(size = 10000):
     return seeds.reshape([-1,1,6])
 
 def create_and_fit_decoder(affine_train, affine_test, path):
-    deco_model = create_decoder([None,1,affine_train.shape[-1]])
+    # don't pre fit
     size = 3
-    affine_data_train = [affine_train[:size,0:1,:], affine_train[:size]]
-    affine_data_test = [affine_test[:,0:1,:], affine_test]
+    if args.state_to_state:
+        x = np.zeros([args.batch, args.state_history, 6])
+        y = np.zeros([args.batch, args.state_history + 1, 6])
+        affine_data_train = [x,y]
+        affine_data_test = None
+        deco_model = create_decoder(x.shape)
 
+    else:
+        affine_data_train = [affine_train[:size,0:1,:], affine_train[:size]]
+        affine_data_test = None
+        deco_model = create_decoder([None,1,6])
+        
     fit_and_save_model(deco_model, affine_data_train, affine_data_test, path, epochs = 1, visualize_train = False, visualize_pred = False)
 
     return deco_model
@@ -794,8 +994,8 @@ def create_and_fit_decoder(affine_train, affine_test, path):
 def create_and_fit_bc(affine_train, affine_test, path):
     bc = IM_BC()
 
-    train = bc.extract_state_action(affine_train)
-    test = bc.extract_state_action(affine_test)
+    train = bc.extract_state_to_state(affine_train)
+    test = bc.extract_state_to_state(affine_test)
 
     fit_and_save_model(bc.model, train, test, path, epochs = args.epochs, visualize_train = False, visualize_pred = False)
 
@@ -830,7 +1030,7 @@ def fit_generator_from_gan(gan_model, demo_data, path, size = 10000, skip_fit = 
     if not skip_fit:
         gan_model = fit_and_save_model(gan_model, train = sampled_data, test = None, model_output_path = path, save_model = False, epochs = args.epochs, visualize_train = False, visualize_pred = False)
 
-    gen_predicted_data = predict_scripts(gan_model, seeds)
+    gen_predicted_data = gan_model.predict_scripts(seeds)
 
     return gan_model, gen_predicted_data
 
@@ -959,13 +1159,6 @@ def translate_and_merge(affine_train, gen_predicted_data, train_data):
 
     return data
 
-def predict_scripts(gan, seeds):
-    [scripts] = gan.generator.predict(seeds)
-
-    scripts = scripts.reshape(seeds.shape[0], 64, 6)
-
-    return scripts
-
 def merge_data(data1, data2):
     sample = [
         np.concatenate([data1[0], data2[0]], axis = 0),
@@ -1004,7 +1197,7 @@ def save_sample_figures(scripts, save_path, prefix = "sample_fig", size = args.s
             if max_size == 0:
                 break
 
-def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iterations = 0):
+def train_GAN(deco, disc, train, test, ground_truth, iterations = 0):
     print 
     print 
     print 
@@ -1034,19 +1227,21 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
     save_freq = 100 # overwrite TODO
     
     prefix = "Test_Demo"
-    save_sample_figures(affine_test, args.save_fig_folder, prefix)
+    if not args.state_to_state:
+        save_sample_figures(ground_truth, args.save_fig_folder, prefix)
 
+    print 
     for itera in range(iterations):
-        x_train = affine_train
+        x_train = train
 
         x_batch = x_train[np.random.randint(0, x_train.shape[0], batch)]
 
-        if itera % 2 == 0:
-            random_seeds = rand_seeds(batch)
+        if args.state_to_state:
+            random_seeds = x_batch[:,:args.state_history,:]
         else:
-            random_seeds = x_batch[:,:1,:] # TODO
-        random_seeds = x_batch[:,:1,:] # TODO
+            random_seeds = x_batch[:,:1,:]
         train_predicted_scripts = gan.predict_scripts(random_seeds)
+        train_predicted = gan.predict(random_seeds)
 
         if (itera % save_freq == 0) and False:
             prefix = "Train_Predicted_In_Iteration_" + str(itera)
@@ -1056,17 +1251,19 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
         for j in range(args.epochs):
             d_train_real = gan.discriminator.train_on_batch(x_batch, real)
             #visualize(x_batch, real)
-            d_train_fake = gan.discriminator.train_on_batch(train_predicted_scripts, fake)
+            d_train_fake = gan.discriminator.train_on_batch(train_predicted, fake)
             #visualize(train_predicted_scripts, fake)
             d_train = (np.array(d_train_real) + np.array(d_train_fake))/2
             #print d_train
 
         g_train = gan.combined.train_on_batch(random_seeds, real)
-        for j in range(args.epochs*10):
+        for j in range(args.epochs*3):
             if itera % 2 == 0:
                 random_seeds = rand_seeds(batch)
             else:
-                random_seeds = x_batch[:,:1,:] # TODO
+                random_seeds = x_batch[:,:1,:]
+            if args.state_to_state:
+                random_seeds = x_batch[:,:args.state_history,:]
             g_train = gan.combined.train_on_batch(random_seeds, real)
 
         #print gan.discriminator.metrics_names
@@ -1075,27 +1272,35 @@ def train_GAN(deco, disc, train_data, test_data, affine_train, affine_test, iter
         log_file_name = args.output_dir + args.save_fig_folder + '/' + args.save_fig_name +'.txt'
         if itera == 0:
             header = '//itera' + ', d_train' + str(gan.discriminator.metrics_names) + ', g_train' + str(gan.combined.metrics_names) + ', d_eval' + str(gan.discriminator.metrics_names) + ', g_eval' + str(gan.combined.metrics_names) + ', traj_eval_MSE' + '//batch %d' % (batch)
+
+
+            print datetime.datetime.now()
             print header
             os.system('echo ' + header + ' > ' + log_file_name)
 
         if args.save_fig_folder and (itera % save_freq == 0):
             #print "\n\n-------- predicting test using seeds  ----------\n\n"
 
-            affine_test_seeds = affine_test[:,:1,:]
+            if args.state_to_state:
+                test_seeds = test[:,:args.state_history,:]
+            else:
+                test_seeds = test[:,:1,:]
             
-            groudtruth_scripts = affine_test[:,:,:]
-            predicted_scripts  = gan.predict_scripts(affine_test_seeds)
+            groudtruth_scripts = ground_truth
+            predicted_scripts  = gan.predict_scripts(test_seeds)
+            print groudtruth_scripts.shape
+            print predicted_scripts.shape
 
-            traj_eval_MSE = ((groudtruth_scripts - predicted_scripts) ** 2).mean()
+            traj_eval_min_MSE = min_MSE(groudtruth_scripts, predicted_scripts).mean(0)
 
-            d_eval = gan.discriminator.evaluate(affine_test, np.ones ((affine_test.shape[0], 1)))
-            g_eval = gan.combined.evaluate(affine_test_seeds, np.ones ((affine_test.shape[0], 1)))
+            d_eval = gan.discriminator.evaluate(test, np.ones ((test.shape[0], 1)))
+            g_eval = gan.combined.evaluate(test_seeds, np.ones ((test.shape[0], 1)))
 
             print "\n\n-------- saving samples of prediction to disk  ----------\n\n"
             prefix = "Test_Predicted_In_Iteration_" + str(itera)
             save_sample_figures(predicted_scripts, args.save_fig_folder, prefix)
 
-            log = "%d \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r" %(itera, d_train[0], d_train[1], g_train[0], g_train[1], d_eval[0], d_eval[1], g_eval[0], g_eval[1], traj_eval_MSE)
+            log = "%d \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r" %(itera, d_train[0], d_train[1], g_train[0], g_train[1], d_eval[0], d_eval[1], g_eval[0], g_eval[1], traj_eval_min_MSE)
             os.system('echo ' + log + ' >> ' + log_file_name)
             print header
             print log
@@ -1111,9 +1316,6 @@ def main():
     test, train, affine_test, affine_train = load_np_data(args.output_dir, max_size = args.max_size, visualize = False)
     print "\ttrain size %d, affine_train size %d" % (train[0].shape[0], affine_train[0].shape[0])
 
-    #create_and_fit_ftf(affine_train, affine_test, args.output_dir + "FTF", )
-    #return
-
     if args.train_gan:
         print "\n\n-------- load_decoder  ----------\n\n"
         deco_pack = load_model_pack (path = args.output_dir + args.__DECO_FOLDER__, model_name = args.__DECO_MODEL_NAME__, entry = args.__DECO_MODEL_NAME__ + "_entry", exit = args.__DECO_MODEL_NAME__ + "_exit") 
@@ -1124,11 +1326,21 @@ def main():
         print "\n\n-------- train GAN  ----------\n\n"
         deco = deco_pack[2]
         disc = disc_pack[2]
-        gan_obj = train_GAN(deco, disc, train_data = train, test_data = test, affine_train = affine_train, affine_test = affine_test, iterations = args.itera)
+        if args.state_to_state:
+            sa = State_To_State()
+            train = sa.extract_state_to_state(affine_train)
+            test = sa.extract_state_to_state(affine_test)
+            #ground_truth = np.concatenate([affine_train, affine_test], axis = 0)
+            ground_truth = affine_test
+        else:
+            train = affine_train
+            test = affine_test
+            ground_truth = affine_test
+        gan_obj = train_GAN(deco, disc, train = train, test = test, ground_truth = ground_truth, iterations = args.itera)
 
     elif args.init_gan:
         print "\n\n-------- create_and_fit_discriminator  ----------\n\n"
-        create_and_fit_discriminator(train = train, test = test, path = args.output_dir + args.__DISC_FOLDER__)
+        create_and_fit_discriminator(affine_train = affine_train, affine_test = affine_test, train = train, test = test, path = args.output_dir + args.__DISC_FOLDER__)
 
         print "\n\n-------- create_and_fit_decoder  ----------\n\n"
         create_and_fit_decoder (affine_train = affine_train, affine_test = affine_test, path = args.output_dir + args.__DECO_FOLDER__)
