@@ -174,10 +174,11 @@ def infer_traj(model, seeds, max_len = 64):
     trajs = np.array(trajs)
     return trajs
 
-def min_MSE(gts, preds):
-    print gts.shape
+def min_MSE(centered_gts, preds):
+    print "min_MSE:"
+    print centered_gts.shape
     print preds.shape
-    return np.array([np.array([(pred - gt)**2 for gt in gts]).mean(1).mean(1).min() for pred in preds])
+    return np.array([np.array([((pred - pred[0]) - gt)**2 for gt in centered_gts]).mean(1).mean(1).min() for pred in preds])
 
 def extract_endpoints(Y):
     X = np.concatenate([Y[:,:1], Y[:,-1:]], axis = 1)
@@ -1203,6 +1204,9 @@ def train_GAN(deco, disc, train, test, ground_truth, iterations = 0):
 
     print "\n\n-------- create_GAN  ----------\n\n"
 
+    train_centered = np.array([traj - traj[0] for traj in train])
+    test_centered = np.array([traj - traj[0] for traj in test])
+
     batch = args.batch
     if deco is None:
         deco = HW_Decoder()
@@ -1255,7 +1259,7 @@ def train_GAN(deco, disc, train, test, ground_truth, iterations = 0):
             #print d_train
 
         g_train = gan.combined.train_on_batch(random_seeds, real)
-        for j in range(args.epochs*10):
+        for j in range(args.epochs*3):
             if itera % 2 == 0:
                 random_seeds = rand_seeds(batch)
             else:
@@ -1269,7 +1273,7 @@ def train_GAN(deco, disc, train, test, ground_truth, iterations = 0):
 
         log_file_name = args.output_dir + args.save_fig_folder + '/' + args.save_fig_name +'.txt'
         if itera == 0:
-            header = '//itera' + ', d_train' + str(gan.discriminator.metrics_names) + ', g_train' + str(gan.combined.metrics_names) + ', d_eval' + str(gan.discriminator.metrics_names) + ', g_eval' + str(gan.combined.metrics_names) + ', traj_eval_MSE' + '//batch %d' % (batch)
+            header = '//itera' + ', d_train' + str(gan.discriminator.metrics_names) + ', g_train' + str(gan.combined.metrics_names) + ', d_eval' + str(gan.discriminator.metrics_names) + ', g_eval' + str(gan.combined.metrics_names) + ', traj_train_MSE' + ', traj_eval_MSE' + '//batch %d' % (batch)
 
 
             print datetime.datetime.now()
@@ -1289,7 +1293,8 @@ def train_GAN(deco, disc, train, test, ground_truth, iterations = 0):
             print groudtruth_scripts.shape
             print predicted_scripts.shape
 
-            traj_eval_min_MSE = min_MSE(groudtruth_scripts, predicted_scripts).mean(0)
+            traj_train_min_MSE = min_MSE(train_centered, predicted_scripts).mean(0)
+            traj_eval_min_MSE = min_MSE(test_centered, predicted_scripts).mean(0)
 
             d_eval = gan.discriminator.evaluate(test, np.ones ((test.shape[0], 1)))
             g_eval = gan.combined.evaluate(test_seeds, np.ones ((test.shape[0], 1)))
@@ -1298,7 +1303,7 @@ def train_GAN(deco, disc, train, test, ground_truth, iterations = 0):
             prefix = "Test_Predicted_In_Iteration_" + str(itera)
             save_sample_figures(predicted_scripts, args.save_fig_folder, prefix)
 
-            log = "%d \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r" %(itera, d_train[0], d_train[1], g_train[0], g_train[1], d_eval[0], d_eval[1], g_eval[0], g_eval[1], traj_eval_min_MSE)
+            log = "%d \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r %r" %(itera, d_train[0], d_train[1], g_train[0], g_train[1], d_eval[0], d_eval[1], g_eval[0], g_eval[1], traj_train_min_MSE, traj_eval_min_MSE)
             os.system('echo ' + log + ' >> ' + log_file_name)
             print header
             print log
@@ -1334,7 +1339,7 @@ def main():
             train = affine_train
             test = affine_test
             ground_truth = affine_test
-        gan_obj = train_GAN(deco, disc, train = train, test = test, ground_truth = ground_truth, iterations = args.itera)
+        gan_obj = train_GAN(deco, disc, train = affine_train, test = affine_test, ground_truth = ground_truth, iterations = args.itera)
 
     elif args.init_gan:
         print "\n\n-------- create_and_fit_discriminator  ----------\n\n"

@@ -15,7 +15,7 @@ batch=128 #16 52
 set -e
 
 
-for data_size in 10000 #1000 100 100000 1000000 # 10000
+for data_size in 10000 3000 1000 300 100
 do
     #python process_scripts.py --max_size ${data_size} # max_size = total_data_size
     for epochs in 32 # 64 # 32 16 8 4 2 1 
