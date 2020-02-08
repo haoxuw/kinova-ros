@@ -25,6 +25,9 @@ fixed_range = [
 ]
 
 
+import matplotlib
+matplotlib.use('Agg')
+
 import sys,os,json,pickle
 
 from mpl_toolkits.mplot3d import Axes3D

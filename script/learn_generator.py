@@ -15,8 +15,6 @@ from keras import regularizers
 
 #adam = keras.optimizers.Adam(learning_rate=0.0001, beta_1=0.999, beta_2=0.9999, amsgrad=False)
 
-
-
 class IM_GAN():
     def __init__(self, gene_model, disc_model):
         __NAME__ = args.__GAN_MODEL_NAME__
@@ -1257,7 +1255,7 @@ def train_GAN(deco, disc, train, test, ground_truth, iterations = 0):
             #print d_train
 
         g_train = gan.combined.train_on_batch(random_seeds, real)
-        for j in range(args.epochs*3):
+        for j in range(args.epochs*10):
             if itera % 2 == 0:
                 random_seeds = rand_seeds(batch)
             else:
