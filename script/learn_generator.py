@@ -146,7 +146,7 @@ def infer_traj(model, seeds, max_len = 64):
 
     trajs = []
     for seed in seeds:
-        traj = []
+        traj = [] + list(seed)
         # take the first args.state_history points
         seed = seed[:args.state_history]
         seed = seed.reshape( [1, args.state_history, -1] )
@@ -154,7 +154,7 @@ def infer_traj(model, seeds, max_len = 64):
         Y = []
     
         x = seed
-        for i in range(max_len):
+        for i in range(max_len - args.state_history):
             y = model.predict(x)
 
             if args.state_to_state:
@@ -177,8 +177,7 @@ def infer_traj(model, seeds, max_len = 64):
 def min_MSE(centered_gts, preds):
     print "min_MSE:"
     print centered_gts.shape
-    print preds.shape
-    return np.array([np.array([((pred - pred[0]) - gt)**2 for gt in centered_gts]).mean(1).mean(1).min() for pred in preds])
+    return np.array([np.array([((pred-pred[0]) - (gt))**2 for gt in centered_gts]).mean(1).mean(1).min() for pred in preds])
 
 def extract_endpoints(Y):
     X = np.concatenate([Y[:,:1], Y[:,-1:]], axis = 1)
@@ -473,7 +472,7 @@ def HW_Decoder():
         x52 = keras.layers.Dense(c_size * x_size * y_size, activation=activation, name = __NAME_PREFIX__ + "seed52_%d_num_%d" %(filters, j) )(x51)
         x5 = keras.layers.Reshape([x_size, y_size, c_size])(x52)
 
-        x = keras.layers.Add(name = __NAME_PREFIX__+ 'add_num_%d' %(j))([x1, x2, x3])
+        x = keras.layers.Add(name = __NAME_PREFIX__+ 'add_num_%d' %(j))([x1, x2, x3, x5])
 
         x = keras.layers.Dropout(name = __NAME_PREFIX__+ 'dropout_num_%d' %(j), rate = 0.2)(x)
         return x
@@ -1196,7 +1195,7 @@ def save_sample_figures(scripts, save_path, prefix = "sample_fig", size = args.s
             if max_size == 0:
                 break
 
-def train_GAN(deco, disc, train, test, ground_truth, iterations = 0):
+def train_GAN(deco, disc, train, test, affine_test, affine_train, iterations = 0):
     print 
     print 
     print 
@@ -1204,8 +1203,8 @@ def train_GAN(deco, disc, train, test, ground_truth, iterations = 0):
 
     print "\n\n-------- create_GAN  ----------\n\n"
 
-    train_centered = np.array([traj - traj[0] for traj in train])
-    test_centered = np.array([traj - traj[0] for traj in test])
+    train_centered = np.array([traj - traj[0] for traj in affine_train])
+    test_centered = np.array([traj - traj[0] for traj in affine_test])
 
     batch = args.batch
     if deco is None:
@@ -1230,9 +1229,8 @@ def train_GAN(deco, disc, train, test, ground_truth, iterations = 0):
     
     prefix = "Test_Demo"
     if not args.state_to_state:
-        save_sample_figures(ground_truth, args.save_fig_folder, prefix)
+        save_sample_figures(affine_test, args.save_fig_folder, prefix)
 
-    print 
     for itera in range(iterations):
         x_train = train
 
@@ -1242,24 +1240,20 @@ def train_GAN(deco, disc, train, test, ground_truth, iterations = 0):
             random_seeds = x_batch[:,:args.state_history,:]
         else:
             random_seeds = x_batch[:,:1,:]
-        train_predicted_scripts = gan.predict_scripts(random_seeds)
-        train_predicted = gan.predict(random_seeds)
-
-        if (itera % save_freq == 0) and False:
-            prefix = "Train_Predicted_In_Iteration_" + str(itera)
-            save_sample_figures(predicted_scripts, args.save_fig_folder, prefix)
-
 
         for j in range(args.epochs):
+            if args.state_to_state:
+                random_seeds = x_batch[:,:args.state_history,:]
+            else:
+                random_seeds = x_batch[:,:1,:]
+            train_predicted = gan.predict(random_seeds)
+
             d_train_real = gan.discriminator.train_on_batch(x_batch, real)
-            #visualize(x_batch, real)
             d_train_fake = gan.discriminator.train_on_batch(train_predicted, fake)
-            #visualize(train_predicted_scripts, fake)
             d_train = (np.array(d_train_real) + np.array(d_train_fake))/2
-            #print d_train
 
         g_train = gan.combined.train_on_batch(random_seeds, real)
-        for j in range(args.epochs*3):
+        for j in range(args.epochs*5):
             if itera % 2 == 0:
                 random_seeds = rand_seeds(batch)
             else:
@@ -1268,36 +1262,27 @@ def train_GAN(deco, disc, train, test, ground_truth, iterations = 0):
                 random_seeds = x_batch[:,:args.state_history,:]
             g_train = gan.combined.train_on_batch(random_seeds, real)
 
-        #print gan.discriminator.metrics_names
-        #print gan.combined.metrics_names
-
         log_file_name = args.output_dir + args.save_fig_folder + '/' + args.save_fig_name +'.txt'
         if itera == 0:
             header = '//itera' + ', d_train' + str(gan.discriminator.metrics_names) + ', g_train' + str(gan.combined.metrics_names) + ', d_eval' + str(gan.discriminator.metrics_names) + ', g_eval' + str(gan.combined.metrics_names) + ', traj_train_MSE' + ', traj_eval_MSE' + '//batch %d' % (batch)
 
-
-            print datetime.datetime.now()
-            print header
             os.system('echo ' + header + ' > ' + log_file_name)
 
         if args.save_fig_folder and (itera % save_freq == 0):
             #print "\n\n-------- predicting test using seeds  ----------\n\n"
 
             if args.state_to_state:
-                test_seeds = test[:,:args.state_history,:]
+                test_seeds = affine_test[:,:args.state_history,:]
             else:
-                test_seeds = test[:,:1,:]
-            
-            groudtruth_scripts = ground_truth
-            predicted_scripts  = gan.predict_scripts(test_seeds)
-            print groudtruth_scripts.shape
-            print predicted_scripts.shape
+                test_seeds = affine_test[:,:1,:]
 
-            traj_train_min_MSE = min_MSE(train_centered, predicted_scripts).mean(0)
-            traj_eval_min_MSE = min_MSE(test_centered, predicted_scripts).mean(0)
+            predicted_scripts  = gan.predict_scripts(test_seeds)
+
+            traj_train_min_MSE = min_MSE(train_centered, np.copy(predicted_scripts)).mean(0)
+            traj_eval_min_MSE = min_MSE(test_centered, np.copy(predicted_scripts)).mean(0)
 
             d_eval = gan.discriminator.evaluate(test, np.ones ((test.shape[0], 1)))
-            g_eval = gan.combined.evaluate(test_seeds, np.ones ((test.shape[0], 1)))
+            g_eval = gan.combined.evaluate(test_seeds, np.ones ((test_seeds.shape[0], 1)))
 
             print "\n\n-------- saving samples of prediction to disk  ----------\n\n"
             prefix = "Test_Predicted_In_Iteration_" + str(itera)
@@ -1307,6 +1292,7 @@ def train_GAN(deco, disc, train, test, ground_truth, iterations = 0):
             os.system('echo ' + log + ' >> ' + log_file_name)
             print header
             print log
+            print datetime.datetime.now()
 
     #prefix = "posdisc_iter_" + str(iteration)
 
@@ -1339,7 +1325,7 @@ def main():
             train = affine_train
             test = affine_test
             ground_truth = affine_test
-        gan_obj = train_GAN(deco, disc, train = affine_train, test = affine_test, ground_truth = ground_truth, iterations = args.itera)
+        gan_obj = train_GAN(deco, disc, train = train, test = test, affine_test = affine_test, affine_train = affine_train, iterations = args.itera)
 
     elif args.init_gan:
         print "\n\n-------- create_and_fit_discriminator  ----------\n\n"
