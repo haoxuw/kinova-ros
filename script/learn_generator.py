@@ -1253,7 +1253,7 @@ def train_GAN(deco, disc, train, test, affine_test, affine_train, iterations = 0
             d_train = (np.array(d_train_real) + np.array(d_train_fake))/2
 
         g_train = gan.combined.train_on_batch(random_seeds, real)
-        for j in range(args.epochs*5):
+        for j in range(args.epochs*args.gen_steps):
             if itera % 2 == 0:
                 random_seeds = rand_seeds(batch)
             else:
