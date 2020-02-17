@@ -30,7 +30,7 @@ class IM_GAN():
                                    optimizer=self.opti,
                                    metrics=['accuracy'])
 
-        if args.state_to_state:
+        if args.state_to_action:
             in_shape = (args.state_history,6)
         else:
             in_shape = (1,6)
@@ -66,7 +66,7 @@ class IM_GAN():
         return pred
 
     def predict_scripts(self, seeds):
-        if args.state_to_state:
+        if args.state_to_action:
             scripts = infer_traj(self.generator, seeds)
         else:
             scripts = self.generator.predict(seeds)
@@ -74,11 +74,11 @@ class IM_GAN():
 
         return scripts
 
-class State_To_State:
+class State_To_Action:
     def __init__(self):
         self.history = args.state_history
 
-    def extract_state_to_state(self, trajs):
+    def extract_feature(self, trajs):
         data_X = []
         data_Y = []
 
@@ -112,22 +112,25 @@ class State_To_State:
         data_X = np.array(data_X)
         data_Y = np.array(data_Y)
 
-        if args.state_to_state:
+        if args.train_gan:
             return np.concatenate( [ data_X[:,:,:6], data_Y[:,:,:6] ], axis = 1 )
         else:
             return data_X, data_Y
     
 
 class IM_BC():
-    def __init__(self):
-        self.history = args.state_history
-        self.model = HW_BC_feedforward(self.history)
+    def __init__(self, state_history):
+        self.history = state_history
+        if args.state_to_action:
+            self.model = self.model_sta = HW_BC_feedforward_STA()
+        else:
+            self.model = self.model_sts = HW_BC_feedforward_STS()
 
         self.opti = keras.optimizers.Adam(0.0002, 0.5)
         loss = 'MSE'
         self.model.compile(loss=loss,
                            optimizer=self.opti,
-                           metrics=['MAE'])
+                           metrics=['MSE'])
         
         keras.utils.plot_model(
             self.model,
@@ -138,17 +141,17 @@ class IM_BC():
             expand_nested=False,
             dpi=96
         )
-    def extract_state_to_state(self, traj):
-        sa = State_To_State()
-        return sa.extract_state_to_state(traj)
+    def extract_feature(self, traj):
+        sa = State_To_Action()
+        return sa.extract_feature(traj)
 
 def infer_traj(model, seeds, max_len = 64):
 
     trajs = []
     for seed in seeds:
-        traj = [] + list(seed)
         # take the first args.state_history points
-        seed = seed[:args.state_history]
+        seed = seed[:args.state_history,:]
+        traj = [] + list(seed)
         seed = seed.reshape( [1, args.state_history, -1] )
 
         Y = []
@@ -157,18 +160,14 @@ def infer_traj(model, seeds, max_len = 64):
         for i in range(max_len - args.state_history):
             y = model.predict(x)
 
-            if args.state_to_state:
-                #output is shape (B,6,6)
-                #take the last point
+            if args.train_gan:
                 traj.append ( y[0,-1,:6] )
                 x = np.concatenate( [ x[:,1:], y[:,-1:,:6] ], axis = 1 )
             else:
-                #output is shape (B,1,7)
                 traj.append ( y[0,0,:6] )
                 if y[0,0,6] > 0.5:
                     break
                 x = np.concatenate( [ x[:,1:], y[:,:,:6] ], axis = 1 )
-            #print traj
 
         trajs.append( np.array(traj) )
     trajs = np.array(trajs)
@@ -182,16 +181,6 @@ def min_MSE(centered_gts, preds):
 def extract_endpoints(Y):
     X = np.concatenate([Y[:,:1], Y[:,-1:]], axis = 1)
     return X
-
-def create_and_fit_ftf(affine_train, affine_test, path):
-    train = [ extract_endpoints(affine_train) , affine_train ]
-    test = [ extract_endpoints(affine_test) , affine_test ]
-    model = HW_full_traj_feedforward()
-    #args.epochs = 1
-    model = fit_and_save_model(model, train, test, path, epochs = args.epochs, visualize_pred = True)
-    print model.summary()
-    #answer = model.predict()
-    return
 
 def HW_full_traj_feedforward():
     __NAME__ = "Feedforward_Conv_"
@@ -248,8 +237,10 @@ def HW_full_traj_feedforward():
 
     return model
 
-def HW_BC_feedforward():
-    entry = keras.layers.Input(shape=(history_len,6), name = __NAME_PREFIX__ + "entry")
+def HW_BC_feedforward_STA():
+    __NAME__ = args.__BC_MODEL_NAME__ + "_STA"
+    __NAME_PREFIX__ = __NAME__ + "_"
+    entry = keras.layers.Input(shape=(args.state_history,6), name = __NAME_PREFIX__ + "entry")
     dense_shape = np.array([64,128,1024,512,32])
 
     x = entry
@@ -268,6 +259,37 @@ def HW_BC_feedforward():
     model = keras.Model(inputs=entry, outputs=exit, name= __NAME__)
 
     print model.summary()
+    return model
+    
+
+def HW_BC_feedforward_STS():
+    __NAME__ = args.__BC_MODEL_NAME__ + "_STS"
+    __NAME_PREFIX__ = __NAME__ + "_"
+    entry = keras.layers.Input(shape=(args.state_history,6), name = __NAME_PREFIX__ + "entry")
+    dense_shape = np.array([64,128,1024,512,128,64,32])
+    kernel_size = 7
+    
+    x = entry
+    x = keras.layers.Reshape((args.state_history,1,6), name = __NAME_PREFIX__ + "unsqueeze")(x)
+    for j in range(len(dense_shape)):
+        filters = dense_shape[j]
+        activation = 'tanh'
+        x = keras.layers.Conv2DTranspose(filters, (kernel_size, 1), activation=activation, name = __NAME_PREFIX__+ 'deconv_%d_num_%d' %(filters, j) )(x)
+        x = keras.layers.Dense(filters, activation=activation, name = __NAME_PREFIX__ + "dense_" + str(j) )(x)
+
+    x = keras.layers.Conv2DTranspose(filters, (13, 1), activation=activation, name = __NAME_PREFIX__+ 'deconv_%d_num_%d' %(filters, j + 1) )(x)
+
+    activation = 'sigmoid'
+    x = keras.layers.Dense(6, activation=activation, name = __NAME_PREFIX__ + "dense_last" )(x)
+
+    x = keras.layers.Reshape((64 - args.state_history,6))(x)
+
+    exit = keras.layers.Concatenate(axis = 1, name = __NAME_PREFIX__ + "exit")([ entry , x])
+
+    model = keras.Model(inputs=entry, outputs=exit, name= __NAME__)
+
+    print model.summary()
+    return model
     
 
 def HW_Disc_Dense(input_shape):
@@ -486,7 +508,6 @@ def HW_Decoder():
 
     stride = 1
     padding = 0
-    activation = 'relu'
     activation = 'tanh'
 
     seed_trans_num = __SEED_TRANS_NUM__
@@ -664,8 +685,6 @@ def fit_and_save_model(model, train, test, model_output_path, save_model = True,
     callbacks = [cp_callback, tensorboard_callback]
     #callbacks = [tensorboard_callback, stopping_callback]
 
-    batch = args.batch
-
     X, Y = train
 
     if visualize_train:
@@ -674,7 +693,7 @@ def fit_and_save_model(model, train, test, model_output_path, save_model = True,
             y = Y[i]
             visualize_script(x, dist = y)
 
-    history = model.fit(X, Y, epochs = epochs, batch_size= batch, shuffle=True, validation_split=( args.__TEST_RATIO__), callbacks=callbacks)
+    history = model.fit(X, Y, epochs = epochs, batch_size= args.batch, shuffle=True, validation_split=( args.__TEST_RATIO__), callbacks=callbacks)
 
     val_loss = np.array(history.history['val_loss'])
     print "val_loss array: %r" % val_loss
@@ -832,7 +851,7 @@ def load_np_data(path, chop_time = True, max_size = -1, visualize = False, max_t
     return test, train, affine_test, affine_train
 
 def create_decoder(input_shape):
-    if args.state_to_state:
+    if args.state_to_action:
         model = HW_Decoder_STS()
         input_shape = (args.state_history, 6)
     else:
@@ -858,7 +877,7 @@ def create_decoder(input_shape):
 
 
 def create_discriminator(input_shape):
-    if args.state_to_state:
+    if args.state_to_action:
         model = HW_Disc_Dense_STS(input_shape)
     else:
         model = HW_Disc_Dense(input_shape)
@@ -884,7 +903,7 @@ def create_discriminator(input_shape):
 
 def create_and_fit_discriminator(affine_train, affine_test, train, test, path):
 
-    if args.state_to_state:
+    if args.state_to_action:
         train = [
             np.zeros([args.batch, args.state_history + 1, 6]),
             np.zeros([args.batch, 1])
@@ -973,7 +992,7 @@ def rand_seeds(size = 10000):
 def create_and_fit_decoder(affine_train, affine_test, path):
     # don't pre fit
     size = 3
-    if args.state_to_state:
+    if args.state_to_action:
         x = np.zeros([args.batch, args.state_history, 6])
         y = np.zeros([args.batch, args.state_history + 1, 6])
         affine_data_train = [x,y]
@@ -990,15 +1009,75 @@ def create_and_fit_decoder(affine_train, affine_test, path):
     return deco_model
 
 def create_and_fit_bc(affine_train, affine_test, path):
-    bc = IM_BC()
+    train_centered = np.array([traj - traj[0] for traj in affine_train])
+    test_centered = np.array([traj - traj[0] for traj in affine_test])
 
-    train = bc.extract_state_to_state(affine_train)
-    test = bc.extract_state_to_state(affine_test)
-
-    fit_and_save_model(bc.model, train, test, path, epochs = args.epochs, visualize_train = False, visualize_pred = False)
-
-    return bc.model
+    if args.state_to_action:
+        bc = IM_BC(args.state_history)
+        model = bc.model_sta
+        train = bc.extract_feature(affine_train)
+        test = bc.extract_feature(affine_test)
+    else:
+        bc = IM_BC(args.state_history)
+        model = bc.model_sts
+        train = [affine_train[:,0:args.state_history,:], affine_train]
+        test = [affine_test[:,0:args.state_history,:], affine_test]
         
+    print " -- training model %r -- " % model.name
+
+    checkpoint = path + model.name + "_cp.hdf5"
+
+    os.system('cp ' + checkpoint + ' ' + checkpoint + '_back')
+
+    # Create a callback that saves the model's weights
+    cp_callback = keras.callbacks.ModelCheckpoint(filepath=checkpoint, verbose=1, save_best_only=True, mode='auto')
+    log_dir = path + "/logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    tensorboard_callback = keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
+    stopping_callback = EarlyStoppingByLossVal(monitor='loss', value=0.001, verbose=1)
+    callbacks = [cp_callback, tensorboard_callback]
+
+    X_train, Y_train = train
+    X_test, Y_test = test
+
+    log_file_name = args.output_dir + args.save_fig_folder + '/' + args.save_log_name +'.txt'
+    for epoch in range(args.epochs):
+        if epoch == 0:
+            header = '//itera' + ', loss' + ', val_loss' + ', traj_train_MSE' + ', traj_eval_MSE' + '//batch %d train_size %d' % (args.batch, affine_train.shape[0])
+            os.system('echo ' + header + ' > ' + log_file_name)
+
+        history = model.fit(X_train, Y_train, epochs = 1, batch_size= args.batch, shuffle=True, validation_split=( args.__TEST_RATIO__), callbacks=callbacks)
+        os.system('echo ' + str(history.history).replace('\'','') + ' >> ' + path + '/' + model.name + '_fit_history.txt')
+        print str(history.history)
+
+
+        loss = np.array(history.history['loss']).min()
+        val_loss = np.array(history.history['val_loss']).min()
+
+        MAX = 100
+        if args.state_to_action:
+            predicted_test_scripts = infer_traj(model, X_test)
+            predicted_train_scripts = infer_traj(model, X_train[:MAX])
+        else:
+            predicted_test_scripts = model.predict(X_test)
+            predicted_train_scripts = model.predict(X_train[:MAX])
+
+        prefix = "Test_Predicted_After_Epoch_" + str(epoch+1)
+        save_sample_figures(predicted_test_scripts, args.save_fig_folder + "/test", prefix)
+        prefix = "Train_Predicted_After_Epoch_" + str(epoch+1)
+        save_sample_figures(predicted_train_scripts, args.save_fig_folder + "/train", prefix)
+
+        traj_train_min_MSE = min_MSE(train_centered, np.copy(predicted_test_scripts)).mean(0)
+        traj_eval_min_MSE = min_MSE(test_centered, np.copy(predicted_test_scripts)).mean(0)
+
+        log = "%d \t %r \t %r \t %r \t %r" %(epoch, loss, val_loss, traj_train_min_MSE, traj_eval_min_MSE)
+        os.system('echo ' + log + ' >> ' + log_file_name)
+        print header
+        print log
+        print datetime.datetime.now()
+
+    model.save(path + model.name + '.h5')
+    return bc.model
+
 def fit_generator_from_gan(gan_model, demo_data, path, size = 10000, skip_fit = False):
     print
     print
@@ -1053,7 +1132,7 @@ def visualize(X, Y = None, size = 10, save_path = None, dequant = False):
             Y = Y
         visualize_script(X, Y)
 
-        
+'''        
 def merge_translated(predicted_data, affine_train, prev_merged_data):
     __MULTI_FACTOR__ = 2
     X_arr = predicted_data[0]
@@ -1163,7 +1242,6 @@ def merge_data(data1, data2):
         np.concatenate([data1[1], data2[1]], axis = 0)
     ]
     return sample
-
 def sample_from(data, size):
     X, Y = data
     if size > X.shape[0]:
@@ -1172,6 +1250,7 @@ def sample_from(data, size):
     X = X[sample_indices]
     Y = Y[sample_indices]
     return [X, Y]
+'''
 
 def save_sample_figures(scripts, save_path, prefix = "sample_fig", size = args.save_fig_num):
     max_size = 100;
@@ -1206,7 +1285,6 @@ def train_GAN(deco, disc, train, test, affine_test, affine_train, iterations = 0
     train_centered = np.array([traj - traj[0] for traj in affine_train])
     test_centered = np.array([traj - traj[0] for traj in affine_test])
 
-    batch = args.batch
     if deco is None:
         deco = HW_Decoder()
     else:
@@ -1219,8 +1297,8 @@ def train_GAN(deco, disc, train, test, affine_test, affine_train, iterations = 0
         
     gan = IM_GAN(gene_model = deco, disc_model = disc)
 
-    real = np.ones ((batch, 1))
-    fake = np.zeros((batch, 1))
+    real = np.ones ((args.batch, 1))
+    fake = np.zeros((args.batch, 1))
 
     save_freq = iterations / 100
     if save_freq < 1:
@@ -1228,21 +1306,21 @@ def train_GAN(deco, disc, train, test, affine_test, affine_train, iterations = 0
     save_freq = 100 # overwrite TODO
     
     prefix = "Test_Demo"
-    if not args.state_to_state:
+    if not args.state_to_action:
         save_sample_figures(affine_test, args.save_fig_folder, prefix)
 
     for itera in range(iterations):
         x_train = train
 
-        x_batch = x_train[np.random.randint(0, x_train.shape[0], batch)]
+        x_batch = x_train[np.random.randint(0, x_train.shape[0], args.batch)]
 
-        if args.state_to_state:
+        if args.state_to_action:
             random_seeds = x_batch[:,:args.state_history,:]
         else:
             random_seeds = x_batch[:,:1,:]
 
-        for j in range(args.epochs):
-            if args.state_to_state:
+        for j in range(args.epochs*args.dis_steps):
+            if args.state_to_action:
                 random_seeds = x_batch[:,:args.state_history,:]
             else:
                 random_seeds = x_batch[:,:1,:]
@@ -1255,23 +1333,22 @@ def train_GAN(deco, disc, train, test, affine_test, affine_train, iterations = 0
         g_train = gan.combined.train_on_batch(random_seeds, real)
         for j in range(args.epochs*args.gen_steps):
             if itera % 2 == 0:
-                random_seeds = rand_seeds(batch)
+                random_seeds = rand_seeds(args.batch)
             else:
                 random_seeds = x_batch[:,:1,:]
-            if args.state_to_state:
+            if args.state_to_action:
                 random_seeds = x_batch[:,:args.state_history,:]
             g_train = gan.combined.train_on_batch(random_seeds, real)
 
-        log_file_name = args.output_dir + args.save_fig_folder + '/' + args.save_fig_name +'.txt'
+        log_file_name = args.output_dir + args.save_fig_folder + '/' + args.save_log_name +'.txt'
         if itera == 0:
-            header = '//itera' + ', d_train' + str(gan.discriminator.metrics_names) + ', g_train' + str(gan.combined.metrics_names) + ', d_eval' + str(gan.discriminator.metrics_names) + ', g_eval' + str(gan.combined.metrics_names) + ', traj_train_MSE' + ', traj_eval_MSE' + '//batch %d' % (batch)
-
+            header = '//itera' + ', d_train' + str(gan.discriminator.metrics_names) + ', g_train' + str(gan.combined.metrics_names) + ', d_eval' + str(gan.discriminator.metrics_names) + ', g_eval' + str(gan.combined.metrics_names) + ', traj_train_MSE' + ', traj_eval_MSE' + '//batch %d train_size %d' % (args.batch, affine_train.shape[0])
             os.system('echo ' + header + ' > ' + log_file_name)
 
         if args.save_fig_folder and (itera % save_freq == 0):
             #print "\n\n-------- predicting test using seeds  ----------\n\n"
 
-            if args.state_to_state:
+            if args.state_to_action:
                 test_seeds = affine_test[:,:args.state_history,:]
             else:
                 test_seeds = affine_test[:,:1,:]
@@ -1288,7 +1365,7 @@ def train_GAN(deco, disc, train, test, affine_test, affine_train, iterations = 0
             prefix = "Test_Predicted_In_Iteration_" + str(itera)
             save_sample_figures(predicted_scripts, args.save_fig_folder, prefix)
 
-            log = "%d \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r %r" %(itera, d_train[0], d_train[1], g_train[0], g_train[1], d_eval[0], d_eval[1], g_eval[0], g_eval[1], traj_train_min_MSE, traj_eval_min_MSE)
+            log = "%d \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r \t %r" %(itera, d_train[0], d_train[1], g_train[0], g_train[1], d_eval[0], d_eval[1], g_eval[0], g_eval[1], traj_train_min_MSE, traj_eval_min_MSE)
             os.system('echo ' + log + ' >> ' + log_file_name)
             print header
             print log
@@ -1298,12 +1375,30 @@ def train_GAN(deco, disc, train, test, affine_test, affine_train, iterations = 0
 
     return gan
 
+def decontaminate_test(affine_test, affine_train):
+    to_delete = set()
+    for i in range(affine_train.shape[0]):
+        for j in range(affine_test.shape[0]):
+            MSE = ((affine_test[j][0] - affine_train[i][0]) ** 2).mean(0)
+            #print MSE
+            if MSE < 0.01:
+                to_delete.add(i)
+
+    print "before decontam ", affine_train.shape
+    new_train = np.delete(affine_train, np.array(list(to_delete)), axis = 0)
+    print "after decontam ", new_train.shape
+    return new_train
+
 def main():
     print "************ Running Experiement Iteration %d, train_gan == %r ************\n\n\n" % (args.itera, args.train_gan)
     
     print "\n\n-------- loading train/test dataset  ----------\n\n"
     test, train, affine_test, affine_train = load_np_data(args.output_dir, max_size = args.max_size, visualize = False)
-    print "\ttrain size %d, affine_train size %d" % (train[0].shape[0], affine_train[0].shape[0])
+    print "\ttrain shape %r, affine_train shape %r" % (train[0].shape, affine_train.shape)
+    print "\ttest shape %r, affine_test shape %r" % (test[0].shape, affine_test.shape)
+
+    if not args.init_gan:
+        affine_train = decontaminate_test(affine_test, affine_train)
 
     if args.train_gan:
         print "\n\n-------- load_decoder  ----------\n\n"
@@ -1315,10 +1410,10 @@ def main():
         print "\n\n-------- train GAN  ----------\n\n"
         deco = deco_pack[2]
         disc = disc_pack[2]
-        if args.state_to_state:
-            sa = State_To_State()
-            train = sa.extract_state_to_state(affine_train)
-            test = sa.extract_state_to_state(affine_test)
+        if args.state_to_action:
+            sa = State_To_Action()
+            train = sa.extract_feature(affine_train)
+            test = sa.extract_feature(affine_test)
             #ground_truth = np.concatenate([affine_train, affine_test], axis = 0)
             ground_truth = affine_test
         else:
@@ -1334,10 +1429,8 @@ def main():
         print "\n\n-------- create_and_fit_decoder  ----------\n\n"
         create_and_fit_decoder (affine_train = affine_train, affine_test = affine_test, path = args.output_dir + args.__DECO_FOLDER__)
     elif args.train_bc:
+        
         bc_model = create_and_fit_bc (affine_train = affine_train, affine_test = affine_test, path = args.output_dir + args.__BC_FOLDER__)
-
-        trajs = infer_traj(bc_model, affine_test)
-        visualize(trajs, save_path = args.output_dir + args.save_fig_folder, dequant = True)
 
     return
     
