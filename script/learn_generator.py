@@ -801,6 +801,7 @@ def load_np_data(path, chop_time = True, max_size = -1, visualize = False, max_t
             x_test = x_test[:max_size]
             y_test = y_test[:max_size]
 
+            # creates 8 affine_tests
             step = max_size / 7
             x_test = x_test[0::step]
             y_test = y_test[0::step]
@@ -1397,7 +1398,7 @@ def main():
     print "\ttrain shape %r, affine_train shape %r" % (train[0].shape, affine_train.shape)
     print "\ttest shape %r, affine_test shape %r" % (test[0].shape, affine_test.shape)
 
-    if not args.init_gan:
+    if not args.init_gan and args.dis_steps is not 4:
         affine_train = decontaminate_test(affine_test, affine_train)
 
     if args.train_gan:

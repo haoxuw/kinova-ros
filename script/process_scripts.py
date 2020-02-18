@@ -71,6 +71,7 @@ def load_from_npy(name, shape = None):
     data = np.load(name).astype('float32')
     if shape:
         data = data.reshape(shape)
+    print data.shape
     return data
 
 def add_time_axis(script):

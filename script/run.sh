@@ -12,67 +12,7 @@ epochs=4
 batch=128 #16 52
 #rm -rf ${name}_results/*
 
-#set -e
-
-#################################################
-## data size
-#################################################
-
-for data_size in 100000 10000 3000 1000 300 100 30000
-do
-    rm ${name}_results/*.npy
-    python process_scripts.py --max_size ${data_size} # max_size = total_data_size
-    for gen_steps in 1 # 10
-    do
-	for epochs in 1 # 8 16
-	do
-	    for exp in 1 # 2 3 4 5 6
-	    do
-		rm ${name}_results/NN_model_* -rf
-		python learn_generator.py --name ${name} --max_size ${pre_train_size} --epochs 1 --batch 16 --init_gan # max_size = pre_train size
-		python learn_generator.py --name ${name} --epochs ${epochs} --gen_steps ${gen_steps} --batch ${batch} --train_gan --itera ${max_iter} --save_fig_num 9 --save_fig_folder data_${data_size}_pretrain_${pre_train_size}_gensteps_${gen_steps}_epoch_${epochs}_batch_${batch}_exp_${exp} #  || play -n synth 1
-		exit
-	    done
-	done
-    done
-done
-
-for data_size in 10000 # 1000 100 # 10000 # 
-do
-    python process_scripts.py --max_size ${data_size} # max_size = total_data_size
-    for gen_steps in 1 2 4 8
-    do
-	for epochs in 1 # 8 16
-	do
-	    for exp in 1
-	    do
-		rm ${name}_results/NN_model_* -rf
-		python learn_generator.py --name ${name} --max_size ${pre_train_size} --epochs 1 --batch 16 --init_gan # max_size = pre_train size
-		python learn_generator.py --name ${name} --epochs ${epochs} --gen_steps ${gen_steps} --batch ${batch} --train_gan --itera ${max_iter} --save_fig_num 9 --save_fig_folder data_${data_size}_pretrain_${pre_train_size}_gensteps_${gen_steps}_epoch_${epochs}_batch_${batch}_exp_${exp} #  || play -n synth 1
-	    done
-	done
-    done
-done
-
-for data_size in 10000 # 1000 100 # 10000 # 
-do
-    python process_scripts.py --max_size ${data_size} # max_size = total_data_size
-    for dis_steps in 1 2 4 8
-    do
-	for epochs in 1 # 8 16
-	do
-	    for exp in 1
-	    do
-		rm ${name}_results/NN_model_* -rf
-		python learn_generator.py --name ${name} --max_size ${pre_train_size} --epochs 1 --batch 16 --init_gan # max_size = pre_train size
-		python learn_generator.py --name ${name} --epochs ${epochs} --dis_steps ${dis_steps} --batch ${batch} --train_gan --itera ${max_iter} --save_fig_num 9 --save_fig_folder data_${data_size}_pretrain_${pre_train_size}_dissteps_${dis_steps}_epoch_${epochs}_batch_${batch}_exp_${exp} #  || play -n synth 1
-	    done
-	done
-    done
-done
-
-
-for data_size in 10000 # 1000 100 # 10000 # 
+for data_size in 30000 # 1000 100 # 10000 # 
 do
     #python process_scripts.py --max_size ${data_size} # max_size = total_data_size
     for gen_steps in 1 # 10
@@ -89,19 +29,36 @@ do
     done
 done
 
+for data_size in 100000 # 1000 100 # 10000 # 
+do
+    python process_scripts.py --max_size ${data_size} # max_size = total_data_size
+    for dis_steps in 4 2
+    do
+	for epochs in 1 2 # 8 16
+	do
+	    for exp in 1 2
+	    do
+		rm ${name}_results/NN_model_* -rf
+		python learn_generator.py --name ${name} --max_size ${pre_train_size} --epochs 1 --batch 16 --init_gan # max_size = pre_train size
+		python learn_generator.py --name ${name} --epochs ${epochs} --dis_steps ${dis_steps} --batch ${batch} --train_gan --itera ${max_iter} --save_fig_num 9 --save_fig_folder data_${data_size}_pretrain_${pre_train_size}_dissteps_${dis_steps}_epoch_${epochs}_batch_${batch}_exp_${exp} #  || play -n synth 1
+	    done
+	done
+    done
+done
+
 
 
 exit
 
-
+#set -e
 #################################################
 ## BC state to action
 #################################################
 
-for data_size in 10000 #1000 100 100000 1000000 # 10000
+for data_size in 7475 #1000 100 100000 1000000 # 10000
 do
     #python process_scripts.py --max_size ${data_size} # max_size = total_data_size
-    for epochs in 32
+    for epochs in 110
     do
 	for exp in 1 #4 5 6 7 8
 	do
@@ -118,10 +75,10 @@ exit
 ## BC state to full traj
 #################################################
 
-for data_size in 10000 #1000 100 100000 1000000 # 10000
+for data_size in 7475 #1000 100 100000 1000000 # 10000
 do
     #python process_scripts.py --max_size ${data_size} # max_size = total_data_size
-    for epochs in 32
+    for epochs in 110
     do
 	for exp in 1 #4 5 6 7 8
 	do
@@ -133,6 +90,65 @@ done
 
 
 exit
+
+
+
+#################################################
+## data size
+#################################################
+
+for data_size in 30000 # 1000 300 100 100000 10000 3000
+do
+    rm ${name}_results/*.npy
+    python process_scripts.py --max_size ${data_size} # max_size = total_data_size
+    for gen_steps in 1 # 10
+    do
+	for epochs in 1 # 8 16
+	do
+	    for exp in 1 # 2 3 4 5 6
+	    do
+		rm ${name}_results/NN_model_* -rf
+		python learn_generator.py --name ${name} --max_size ${pre_train_size} --epochs 1 --batch 16 --init_gan # max_size = pre_train size
+		python learn_generator.py --name ${name} --epochs ${epochs} --gen_steps ${gen_steps} --batch ${batch} --train_gan --itera ${max_iter} --save_fig_num 9 --save_fig_folder data_${data_size}_pretrain_${pre_train_size}_gensteps_${gen_steps}_epoch_${epochs}_batch_${batch}_exp_${exp} #  || play -n synth 1
+	    done
+	done
+    done
+done
+
+for data_size in 30000 # 1000 100 # 10000 # 
+do
+    #python process_scripts.py --max_size ${data_size} # max_size = total_data_size
+    for gen_steps in 1 2 4 8
+    do
+	for epochs in 1 # 8 16
+	do
+	    for exp in 1
+	    do
+		rm ${name}_results/NN_model_* -rf
+		python learn_generator.py --name ${name} --max_size ${pre_train_size} --epochs 1 --batch 16 --init_gan # max_size = pre_train size
+		python learn_generator.py --name ${name} --epochs ${epochs} --gen_steps ${gen_steps} --batch ${batch} --train_gan --itera ${max_iter} --save_fig_num 9 --save_fig_folder data_${data_size}_pretrain_${pre_train_size}_gensteps_${gen_steps}_epoch_${epochs}_batch_${batch}_exp_${exp} #  || play -n synth 1
+	    done
+	done
+    done
+done
+
+for data_size in 30000 # 1000 100 # 10000 # 
+do
+    #python process_scripts.py --max_size ${data_size} # max_size = total_data_size
+    for dis_steps in 1 2 4 8
+    do
+	for epochs in 1 # 8 16
+	do
+	    for exp in 1
+	    do
+		rm ${name}_results/NN_model_* -rf
+		python learn_generator.py --name ${name} --max_size ${pre_train_size} --epochs 1 --batch 16 --init_gan # max_size = pre_train size
+		python learn_generator.py --name ${name} --epochs ${epochs} --dis_steps ${dis_steps} --batch ${batch} --train_gan --itera ${max_iter} --save_fig_num 9 --save_fig_folder data_${data_size}_pretrain_${pre_train_size}_dissteps_${dis_steps}_epoch_${epochs}_batch_${batch}_exp_${exp} #  || play -n synth 1
+	    done
+	done
+    done
+done
+
 
 
 
