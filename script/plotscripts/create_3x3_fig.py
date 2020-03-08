@@ -51,8 +51,8 @@ sys.exit()
 '''
 
 mid_string = "_Test_Predicted_In_Iteration_"
-mid_string = "_Test_Predicted_After_Epoch_"
-mid_string = "_Train_Predicted_After_Epoch_"
+#mid_string = "_Test_Predicted_After_Epoch_"
+#mid_string = "_Train_Predicted_After_Epoch_"
 fname_list = sorted(os.listdir(input_path))
 fnames = {}
 epis = set()

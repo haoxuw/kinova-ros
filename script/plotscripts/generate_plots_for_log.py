@@ -25,15 +25,13 @@ legend = np.array(legend)
 print data.shape
 print legend
 
-critera = [[1,3],[2,4],[5,7],[6,8],[5,10],[1,9]]
+
+critera = [[1,3],[2,4],[5,7],[6,8],[2,9],[4,9],[6,10],[8,10],]
 
 for pair in critera:
     fig, ax = plt.subplots()
     blue,red = pair
     itera = data[0]
-    ax.plot(itera, data[blue], 'b', label = legend[blue])
-
-    ax.plot(itera, data[red], 'r', label = legend[red])
     #ax.axis('legend[index]')
     plt.legend(loc='best')
     plt.xlabel('Trained_Iterations')
@@ -42,57 +40,19 @@ for pair in critera:
         plt.ylabel('Loss')
     else:
         plt.ylabel('Accuracy')
+
+
+    ax.plot(itera, data[blue], 'b', label = legend[blue])
     if 'MSE' in legend[red]:
-        plt.ylabel('Loss(Blue) Reward(Red)')
+        plt.ylabel('Accuracy(Blue) NegativeReward(Orange)')
+        ax.plot(itera, data[red], 'orange', label = legend[red])
+    else:
+        ax.plot(itera, data[red], 'r', label = legend[red])
+
     filename = "_".join(legend[pair])
     print filename
+    print log_filename
+    plt.legend(loc='best')
     plt.savefig(filename + '.png', dpi=600)
-    print  log_filename
     #plt.show()
-
-
-
-sys.exit()
-
-data, legend_names, legends = load_log_files_under_path(root_path)
-
-#for i in range(9):
-#    plot(data, i+1)
-print data.shape
-print legend_names
-print legends
-print
-
-fig, ax = plt.subplots()
-plt.legend(loc='best')
-cmap = plt.cm.get_cmap('Oranges')
-rang = [0.1, 1]
-colors = [cmap(i) for i in np.linspace(rang[0], rang[1], legends.shape[0])]
-plt.gca().set_color_cycle(colors)
-
-
-critera = 9
-C = critera
-plt.xlabel('Trained_Iterations')
-plt.ylabel(data_names[C])
-ax.set_ylim([0,0.5])
-
-for i in range(legends.shape[0]):
-    ax.plot(data[i][0], data[i][C], label = ("Experiment # %d Train" % i))
-
-cmap = plt.cm.get_cmap('Blues')
-rang = [0.1, 1]
-colors = [cmap(i) for i in np.linspace(rang[0], rang[1], legends.shape[0])]
-plt.gca().set_color_cycle(colors)
-
-plt.ylabel(data_names[C])
-ax.set_ylim([0,0.5])
-C += 1
-for i in range(legends.shape[0]):
-    ax.plot(data[i][0], data[i][C], label = ("Experiment # %d Eval" % i))
-
-save_fname = name + '.png'
-plt.legend(loc='best')
-plt.savefig("./pngs/" + save_fname)
-
 

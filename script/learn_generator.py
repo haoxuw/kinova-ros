@@ -182,61 +182,6 @@ def extract_endpoints(Y):
     X = np.concatenate([Y[:,:1], Y[:,-1:]], axis = 1)
     return X
 
-def HW_full_traj_feedforward():
-    __NAME__ = "Feedforward_Conv_"
-    __NAME_PREFIX__ = __NAME__ + "_"
-    
-    entry = keras.layers.Input(shape=(2,6), name = __NAME_PREFIX__ + "entry")
-    dense_shape = np.array([16,64,128,128,256])
-
-    x = entry
-    x = keras.layers.Reshape((2,6), name = __NAME_PREFIX__ + "_entry_reshape")(x)
-
-    w = 2
-    for j in range(len(dense_shape)):
-        filters = dense_shape[j] * 2
-        act = 'linear'
-        act = 'tanh'
-        conv = keras.layers.Conv1D(filters,
-                                   filters,
-                                   activation=act,
-                                   padding = 'same',
-                                   kernel_regularizer=regularizers.l2(0.001),
-                                   name = __NAME_PREFIX__+ 'cv1_1_%d_x_%d' %(filters, j) )
-        activation= keras.layers.ReLU(max_value = 6,
-                                      name = __NAME_PREFIX__+ 'act_1_%d_x_%d' %(filters, j) )
-        x = conv(x)
-        x = activation(x)
-        x = keras.layers.Reshape((w,1,filters), name = __NAME_PREFIX__ + "%d_1_reshape"%j)(x)
-        x = keras.backend.resize_images(x, 1, 2, "channels_last")
-        w *= 2
-        x = keras.layers.Reshape((w,filters), name = __NAME_PREFIX__ + "%d_2_reshape"%j)(x)
-
-    activation = 'sigmoid'
-    x = keras.layers.Dense(6, activation=activation, name = __NAME_PREFIX__ + "dense_last" )(x)
-
-    exit = keras.layers.Reshape((64,6), name = __NAME_PREFIX__ + "exit")(x)
-
-    model = keras.Model(inputs=entry, outputs=exit, name= __NAME__)
-
-    #print model.summary()
-
-    model.compile(loss='MSE',
-                  optimizer='adam',
-                  metrics=['MAE'])
-        
-    keras.utils.plot_model(
-        model,
-        to_file=model.name + '.png',
-        show_shapes=False,
-        show_layer_names=False,
-        rankdir='TB',
-        expand_nested=False,
-        dpi=96
-    )
-
-    return model
-
 def HW_BC_feedforward_STA():
     __NAME__ = args.__BC_MODEL_NAME__ + "_STA"
     __NAME_PREFIX__ = __NAME__ + "_"
@@ -385,8 +330,8 @@ def HW_Disc_Dense(input_shape):
     return model
 
 def HW_Disc_Dense_STS(input_shape):
-    __NAME__ = args.__DISC_MODEL_NAME__
-    __NAME_PREFIX__ = __NAME__ + "_"
+    __NAME__ = args.__DISC_MODEL_NAME__ + "_STS"
+    __NAME_PREFIX__ = __NAME__
  
     dense_shape = np.array([32,64,128,256,64,32])
 
@@ -558,8 +503,8 @@ def HW_Decoder():
 
 
 def HW_Decoder_STS():
-    __NAME__ = args.__DECO_MODEL_NAME__
-    __NAME_PREFIX__ = __NAME__ + "_"
+    __NAME__ = args.__DECO_MODEL_NAME__ + "_STS_"
+    __NAME_PREFIX__ = __NAME__
 
     __FILTER_SIZE__ = 7
 
@@ -1398,7 +1343,7 @@ def main():
     print "\ttrain shape %r, affine_train shape %r" % (train[0].shape, affine_train.shape)
     print "\ttest shape %r, affine_test shape %r" % (test[0].shape, affine_test.shape)
 
-    if not args.init_gan and args.dis_steps is not 4:
+    if not args.init_gan:
         affine_train = decontaminate_test(affine_test, affine_train)
 
     if args.train_gan:

@@ -55,7 +55,7 @@ print
 fig, ax = plt.subplots()
 plt.legend(loc='best')
 cmap = plt.cm.get_cmap('Oranges')
-rang = [0.1, 1]
+rang = [0.3, 1]
 colors = [cmap(i) for i in np.linspace(rang[0], rang[1], legends.shape[0])]
 plt.gca().set_color_cycle(colors)
 
@@ -72,7 +72,7 @@ for i in range(legends.shape[0]):
     ax.plot(data[i][0], data[i][C], label = ("DataSize = %d Train" % legends[i][0]))
 
 cmap = plt.cm.get_cmap('Blues')
-rang = [0.1, 1]
+rang = [0.3, 1]
 colors = [cmap(i) for i in np.linspace(rang[0], rang[1], legends.shape[0])]
 plt.gca().set_color_cycle(colors)
 

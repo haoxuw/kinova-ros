@@ -48,35 +48,26 @@ print
 
 fig, ax = plt.subplots()
 plt.legend(loc='best')
-cmap = plt.cm.get_cmap('Oranges')
-rang = [0.1, 1]
-colors = [cmap(i) for i in np.linspace(rang[0], rang[1], legends.shape[0])]
-plt.gca().set_color_cycle(colors)
 
 data_names = "itera, Discriminator_Training_Loss, Discriminator_Training_Accuracy, Generator_Training_Loss, g_train_MAE, Discriminator_Eval_Loss, Discriminator_Eval_Accuracy, Generator_Eval_Loss, Generator_Eval_Accuracy, Min_MSE_Train, Min_MSE_Eval".replace(" ", "").split(",")
 
 critera = 9
 C = critera
 plt.xlabel('Trained_Iterations')
-plt.ylabel(data_names[C])
 ax.set_ylim([0,0.5])
 
+eval_color = ['#ff0000','#ffff00','#ff00ff','#00ffff','#00ff00','#0000ff',]
+train_color = ['#770000','#777700','#770077','#007777','#007700','#000077',]
 for i in range(legends.shape[0]):
-    ax.plot(data[i][0], data[i][C], label = ("Experiment # %d Train" % i))
+    ax.plot(data[i][0], data[i][C], label = ("Experiment # %d Train" % i), color = train_color[i])
+    #ax.plot(data[i][0], data[i][C+1], label = ("Experiment # %d Eval" % i), color = eval_color[i])
+plt.ylabel('MinOfMeanSquareErrors_Eval')
+plt.ylabel('MinOfMeanSquareErrors_Train')
+#plt.ylabel('MinOfMeanSquareErrors')
 
-cmap = plt.cm.get_cmap('Blues')
-rang = [0.1, 1]
-colors = [cmap(i) for i in np.linspace(rang[0], rang[1], legends.shape[0])]
-plt.gca().set_color_cycle(colors)
-
-plt.ylabel(data_names[C])
-ax.set_ylim([0,0.5])
-C += 1
-for i in range(legends.shape[0]):
-    ax.plot(data[i][0], data[i][C], label = ("Experiment # %d Eval" % i))
-
-save_fname = 'exp.png'
+save_fname = 'exp_train.png'
 plt.legend(loc='best')
-plt.savefig("../pngs/" + save_fname)
+plt.savefig("./pngs/" + save_fname)
+#plt.show()
 
 
